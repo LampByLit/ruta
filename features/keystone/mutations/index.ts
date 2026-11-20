@@ -26,6 +26,7 @@ import { riderTripHistory } from './riderTripHistory'
 import { dispatchCandidatePage } from './dispatchCandidates'
 import { addDriverTimeOff, addFleetMember, confirmManualPayment, confirmManualRefund, moderateReview, removeDriverTimeOff, updateFleetMember, updateSafetyIncident, updateSupportCase } from './fleetOperations'
 import { addComplianceDocument, addFleetDriver, addFleetVehicle, assignVehicleDrivers, createFareRule, createFleet, createRideService, createServiceArea, reviewComplianceDocument, reviewDriver, reviewVehicle, setDriverAvailability, setDriverOnline } from './fleetSetup'
+import { canonicalPhone, pinLocked, recordPinAttempt } from '../domain/pinGate'
 
 const graphql = String.raw
 
@@ -151,7 +152,7 @@ export const typeDefs = graphql`
   `
 
 export function extendGraphqlSchema(baseSchema: GraphQLSchema) {
-  return mergeSchemas({ schemas: [baseSchema], typeDefs, resolvers: {
+  const merged = mergeSchemas({ schemas: [baseSchema], typeDefs, resolvers: {
     ...dateTimeFieldResolvers(typeDefs),
     Query: {
       redirectToInit, marketplaceRideshareServices, marketplaceRideshareService, marketplaceRideshareServiceAreas, marketplaceRidesharePopularPlaces, marketplaceRideshareEstimates, publicRideshareTrip, publicRideshareRequest, myDriverWorkspace: dispatchOnDriverRead(myDriverWorkspace), myRideshareTrips, riderRequestStatus: dispatchOnPoll(riderRequestStatus), myRideshareRequests, operatorTripHandoff,
@@ -168,4 +169,19 @@ export function extendGraphqlSchema(baseSchema: GraphQLSchema) {
     },
     Mutation: { createOperatorRide, startTripCardPayment, confirmTripCardPayment, startRiderCardSetup, confirmRiderCardSetup, removeRiderCard, retryTripCharge, reportDriverLocation, addFleetMember, updateFleetMember, addDriverTimeOff, removeDriverTimeOff, triageSafetyIncident: updateSafetyIncident, triageSupportCase: updateSupportCase, moderateReview, confirmManualPayment, confirmManualRefund, setupFleet: createFleet, addFleetDriver, addFleetVehicle, assignVehicleDrivers, addComplianceDocument, reviewComplianceDocument, reviewDriver, reviewVehicle, setDriverAvailability, setDriverOnline: autoDispatchAfter(setDriverOnline, 'online'), setupServiceArea: createServiceArea, setupRideService: createRideService, setupFareRule: createFareRule, saveFleetBranding, marketplaceRideshareQuote, requestRide: autoDispatchAfter(requestRide, 'request'), resolveRideRequestIntent, offerRideToDriver, respondToRideOffer: autoDispatchAfter(respondToRideOffer, 'response'), transitionTrip: receiptAfterTransition(chargeAfterTransition(transitionTrip)), cancelRideRequest, cancelRide: chargeAfterCancel(cancelRide), recordTripLocation, submitTripReview, reportSafetyIncident, openSupportCase, sendTripMessage, initiateTripPayment, requestTripRefund, bootstrapRideshare, dismissRideshareOnboarding, refreshRideshareClocks, expireRideOffers, expireRequestFleetOffers },
   } })
+  const authenticate = merged.getMutationType()?.getFields().authenticateUserWithPassword
+  if (authenticate?.resolve) {
+    const original = authenticate.resolve
+    authenticate.resolve = async (root, args, context, info) => {
+      const phone = canonicalPhone(String(args.phone || ''))
+      const pin = String(args.password || '')
+      const failure = { code: 'FAILURE', message: 'Authentication failed.' }
+      if (!phone || !/^\d{6}$/.test(pin)) return failure
+      if (await pinLocked(context.prisma, phone)) return failure
+      const result = await original(root, { ...args, phone, password: pin }, context, info)
+      await recordPinAttempt(context.prisma, phone, Boolean(result && 'sessionToken' in result && result.sessionToken))
+      return result
+    }
+  }
+  return merged
 }

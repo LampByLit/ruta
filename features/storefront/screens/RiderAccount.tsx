@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { useI18n } from '@/features/i18n/locale'
+import { canonicalPhone, type PhoneCountry } from '@/features/phones/parse'
 import { gql, whoAmI, type Identity } from '../lib/api'
 import { RiderPage } from '../components/RiderPage'
 import { Button, ButtonLink, Icon, Spinner } from '../components/ui'
@@ -40,20 +41,23 @@ export default function RiderAccount({ register = false }: { register?: boolean 
     if (inFlight.current) return
     const form = event.currentTarget
     const values = new FormData(form)
-    const email = String(values.get('email') || '').trim()
-    const password = String(values.get('password') || '')
+    const country = String(values.get('country') || '')
+    const chosen: PhoneCountry | null = country === 'PE' ? 'PE' : country === 'US' ? 'US' : null
+    const phone = canonicalPhone(String(values.get('phone') || ''), chosen)
+    const pin = String(values.get('pin') || '')
     inFlight.current = true; setBusy(true); setError('')
     try {
+      if (!phone || !/^\d{6}$/.test(pin)) throw new Error()
       if (register) {
-        const created = await gql<{ createUser: { id: string } | null }>('mutation RiderRegister($name: String!, $email: String!, $password: String!) { createUser(data: { name: $name, email: $email, password: $password }) { id } }', { name: String(values.get('name') || '').trim(), email, password })
+        const created = await gql<{ createUser: { id: string } | null }>('mutation RiderRegister($name: String!, $phone: String!, $password: String!) { createUser(data: { name: $name, phone: $phone, password: $password }) { id } }', { name: String(values.get('name') || '').trim(), phone, password: pin })
         if (!created.createUser?.id) throw new Error()
       }
-      const result = await gql<{ authenticateUserWithPassword: { item?: { id: string } } | null }>('mutation RiderSignIn($email: String!, $password: String!) { authenticateUserWithPassword(email: $email, password: $password) { ... on UserAuthenticationWithPasswordSuccess { item { id } } ... on UserAuthenticationWithPasswordFailure { __typename } } }', { email, password })
+      const result = await gql<{ authenticateUserWithPassword: { item?: { id: string } } | null }>('mutation RiderSignIn($phone: String!, $password: String!) { authenticateUserWithPassword(phone: $phone, password: $password) { ... on UserAuthenticationWithPasswordSuccess { item { id } } ... on UserAuthenticationWithPasswordFailure { __typename } } }', { phone, password: pin })
       if (!result.authenticateUserWithPassword?.item?.id) throw new Error()
       router.replace('/'); router.refresh()
     } catch { setError(register ? t('account.createFailed') : t('account.signInFailed')) }
     finally {
-      const input = form.elements.namedItem('password')
+      const input = form.elements.namedItem('pin')
       if (input instanceof HTMLInputElement) input.value = ''
       inFlight.current = false; setBusy(false)
     }
@@ -68,8 +72,33 @@ export default function RiderAccount({ register = false }: { register?: boolean 
   if (identity) return <RiderPage title={t('account.title')}>
     <div className="flex items-center gap-4">
       <span aria-hidden="true" className="grid size-16 shrink-0 place-items-center rounded-full bg-tide-soft text-tide"><Icon.person className="size-8" /></span>
-      <div className="min-w-0"><p className="truncate text-[20px] font-bold">{identity.name}</p><p className="truncate text-[15px] text-ink-2">{identity.email}</p></div>
+      <div className="min-w-0"><p className="truncate text-[20px] font-bold">{identity.name}</p><p className="truncate text-[15px] text-ink-2">{identity.phone || identity.email}</p></div>
     </div>
+    <form className="mt-6 space-y-3" onSubmit={async event => {
+      event.preventDefault()
+      const values = new FormData(event.currentTarget)
+      const country = String(values.get('country') || '')
+      const chosen: PhoneCountry | null = country === 'PE' ? 'PE' : country === 'US' ? 'US' : null
+      const phone = canonicalPhone(String(values.get('phone') || ''), chosen)
+      const pin = String(values.get('pin') || '')
+      if (!phone || !/^\d{6}$/.test(pin)) { setError(t('account.signInFailed')); return }
+      setBusy(true); setError('')
+      try {
+        await gql('mutation($id: ID!, $phone: String!, $password: String!) { updateUser(where: { id: $id }, data: { phone: $phone, password: $password }) { id } }', { id: identity.id, phone, password: pin })
+        setIdentity({ ...identity, phone })
+      } catch { setError(t('account.signInFailed')) }
+      setBusy(false)
+    }}>
+      <label className="block"><span className="mb-1.5 block text-[15px] font-medium">{t('account.country')}</span>
+        <select name="country" defaultValue="US" className="h-14 w-full rounded-[16px] bg-white px-4 text-[16px] ring-1 ring-inset ring-rule">
+          <option value="US">{t('account.countryUs')}</option>
+          <option value="PE">{t('account.countryPe')}</option>
+        </select>
+      </label>
+      <label className="block"><span className="mb-1.5 block text-[15px] font-medium">{t('account.phone')}</span><input name="phone" type="tel" required inputMode="tel" defaultValue={identity.phone || ''} className="h-14 w-full rounded-[16px] bg-white px-4 text-[16px] ring-1 ring-inset ring-rule" /></label>
+      <label className="block"><span className="mb-1.5 block text-[15px] font-medium">{t('account.pin')}</span><input name="pin" type="password" required inputMode="numeric" pattern="[0-9]{6}" minLength={6} maxLength={6} className="h-14 w-full rounded-[16px] bg-white px-4 text-[16px] ring-1 ring-inset ring-rule" /></label>
+      <Button type="submit" className="w-full" disabled={busy}>{t('account.savePhone')}</Button>
+    </form>
     {saved.enabled && <section className="mt-6" aria-labelledby="payment-heading">
       <h2 id="payment-heading" className="mb-2 text-[15px] font-semibold text-ink-2">{t('account.payment')}</h2>
       <SavedCardRow card={saved.card} returnTo="/account" onError={setCardNotice} />
@@ -91,8 +120,14 @@ export default function RiderAccount({ register = false }: { register?: boolean 
       : <form onSubmit={submit} className="space-y-3">
         <fieldset disabled={busy} className="space-y-3">
           {register && <label className="block"><span className="mb-1.5 block text-[15px] font-medium">{t('account.name')}</span><input name="name" required maxLength={160} autoComplete="name" className={field} /></label>}
-          <label className="block"><span className="mb-1.5 block text-[15px] font-medium">{t('account.email')}</span><input name="email" type="email" required autoComplete="username" inputMode="email" className={field} /></label>
-          <label className="block"><span className="mb-1.5 block text-[15px] font-medium">{t('account.password')}</span><input name="password" type="password" required minLength={register ? 10 : undefined} autoComplete={register ? 'new-password' : 'current-password'} className={field} /></label>
+          <label className="block"><span className="mb-1.5 block text-[15px] font-medium">{t('account.country')}</span>
+            <select name="country" defaultValue="US" className={field}>
+              <option value="US">{t('account.countryUs')}</option>
+              <option value="PE">{t('account.countryPe')}</option>
+            </select>
+          </label>
+          <label className="block"><span className="mb-1.5 block text-[15px] font-medium">{t('account.phone')}</span><input name="phone" type="tel" required autoComplete="username" inputMode="tel" className={field} /></label>
+          <label className="block"><span className="mb-1.5 block text-[15px] font-medium">{t('account.pin')}</span><input name="pin" type="password" required inputMode="numeric" autoComplete={register ? 'new-password' : 'current-password'} pattern="[0-9]{6}" minLength={6} maxLength={6} className={field} /></label>
         </fieldset>
         {error && <p role="alert" className="text-[14px] text-alert">{error}</p>}
         <Button type="submit" size="lg" className="w-full" disabled={busy}>{busy ? <><Spinner className="size-5" />{register ? t('account.creating') : t('account.signingIn')}</> : register ? t('account.create') : t('account.signInTitle')}</Button>

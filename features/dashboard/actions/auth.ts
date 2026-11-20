@@ -6,11 +6,17 @@ import { redirect } from 'next/navigation';
 import { removeAuthToken } from '@/features/dashboard/lib/cookies';
 import { revalidatePath } from 'next/cache';
 import { PUBLIC_REQUEST_ERROR, safeErrorSummary, sanitizeDashboardRedirect } from '../lib/security';
-import { passwordResetEmailAvailable, RESET_EMAIL_UNAVAILABLE } from '../lib/authFlow';
+import { canonicalPhone, type PhoneCountry } from '@/features/phones/parse';
+
+function submittedPhone(formData: FormData) {
+  const country = String(formData.get('country') || '')
+  const chosen: PhoneCountry | null = country === 'PE' ? 'PE' : country === 'US' ? 'US' : null
+  return canonicalPhone(String(formData.get('phone') || ''), chosen)
+}
 
 // Legacy storefront callers may pass a password in previous state; never return it.
-type AuthState = { message: string | null; formData: { email: string; password?: string } };
-const SIGN_IN_ERROR = 'Unable to sign in. Check your email and password and try again.';
+type AuthState = { message: string | null; formData: { phone: string; country: string; password?: string } };
+const SIGN_IN_ERROR = 'That phone number and PIN don’t match. Five wrong tries locks the number for 15 minutes.';
 const INITIAL_USER_ERROR = 'Unable to create the initial user.';
 
 // keystoneClient errors are already reduced to Keystone's user-facing validation text
@@ -19,22 +25,24 @@ function withReason(base: string, error: string | undefined) {
 }
 
 export async function signIn(prevState: AuthState, formData: FormData) {
-  const email = String(formData.get('email') || '');
-  const password = String(formData.get('password') || '');
+  const country = String(formData.get('country') || 'US');
+  const phone = submittedPhone(formData);
+  const pin = String(formData.get('pin') || formData.get('password') || '');
   const from = sanitizeDashboardRedirect(formData.get('from'));
+  if (!phone || !/^\d{6}$/.test(pin)) return { message: SIGN_IN_ERROR, formData: { phone: String(formData.get('phone') || ''), country } };
 
   try {
     const response = await keystoneClient(`
-      mutation($email: String!, $password: String!) {
-        authenticate: authenticateUserWithPassword(email: $email, password: $password) {
+      mutation($phone: String!, $password: String!) {
+        authenticate: authenticateUserWithPassword(phone: $phone, password: $password) {
           ... on UserAuthenticationWithPasswordSuccess { sessionToken }
           ... on UserAuthenticationWithPasswordFailure { message }
         }
       }
-    `, { email, password });
+    `, { phone, password: pin });
 
     if (!response.success || response.data?.authenticate?.message || !response.data?.authenticate?.sessionToken) {
-      return { message: SIGN_IN_ERROR, formData: { email } };
+      return { message: SIGN_IN_ERROR, formData: { phone: String(formData.get('phone') || ''), country } };
     }
 
     const cookieStore = await cookies();
@@ -47,7 +55,7 @@ export async function signIn(prevState: AuthState, formData: FormData) {
     });
   } catch (error) {
     console.error('Sign-in failed:', safeErrorSummary(error));
-    return { message: SIGN_IN_ERROR, formData: { email } };
+    return { message: SIGN_IN_ERROR, formData: { phone: String(formData.get('phone') || ''), country } };
   }
 
   // Next.js redirects throw; keep this outside the catch.
@@ -55,23 +63,26 @@ export async function signIn(prevState: AuthState, formData: FormData) {
 }
 
 export async function signUp(prevState: AuthState, formData: FormData) {
-  const email = String(formData.get('email') || '');
-  const password = String(formData.get('password') || '');
-  const name = email.split('@')[0];
+  const country = String(formData.get('country') || 'US');
+  const phone = submittedPhone(formData);
+  const pin = String(formData.get('pin') || formData.get('password') || '');
+  const name = String(formData.get('name') || '').trim() || 'Driver';
+  const kept = { phone: String(formData.get('phone') || ''), country };
+  if (!phone || !/^\d{6}$/.test(pin)) return { message: 'Enter a US, Canada, or Peru mobile number and a 6-digit PIN.', formData: kept };
   try {
     const response = await keystoneClient(`
-      mutation($email: String!, $name: String!, $password: String!) {
-        createUser(data: { email: $email, name: $name, password: $password }) { id }
+      mutation($phone: String!, $name: String!, $password: String!) {
+        createUser(data: { phone: $phone, name: $name, password: $password }) { id }
       }
-    `, { email, name, password });
+    `, { phone, name, password: pin });
     if (!response.success) {
-      return { message: 'Unable to create an account. Please try again.', formData: { email } };
+      return { message: 'Unable to create an account. Please try again.', formData: kept };
     }
   } catch (error) {
     console.error('Sign-up failed:', safeErrorSummary(error));
-    return { message: 'Unable to create an account. Please try again.', formData: { email } };
+    return { message: 'Unable to create an account. Please try again.', formData: kept };
   }
-  return signIn({ message: null, formData: { email } }, formData);
+  return signIn({ message: null, formData: kept }, formData);
 }
 
 export async function signOut() {
@@ -86,12 +97,15 @@ export async function signOut() {
 }
 
 export async function createInitialUser(
-  prevState: { message: string | null; formData: { name: string; email: string } },
+  prevState: { message: string | null; formData: { name: string; phone: string; country: string } },
   formData: FormData
 ) {
   const name = String(formData.get('name') || '');
-  const email = String(formData.get('email') || '');
-  const password = String(formData.get('password') || '');
+  const country = String(formData.get('country') || 'US');
+  const phone = submittedPhone(formData);
+  const pin = String(formData.get('pin') || formData.get('password') || '');
+  const kept = { name, phone: String(formData.get('phone') || ''), country };
+  if (!phone || !/^\d{6}$/.test(pin)) return { message: 'Enter a US, Canada, or Peru mobile number and a 6-digit PIN.', formData: kept };
   try {
     const response = await keystoneClient(`
       mutation($data: CreateInitialUserInput!) {
@@ -99,53 +113,24 @@ export async function createInitialUser(
           ... on UserAuthenticationWithPasswordSuccess { item { id } }
         }
       }
-    `, { data: { name, email, password } });
+    `, { data: { name, phone, password: pin } });
     if (!response.success) {
-      return { message: withReason(INITIAL_USER_ERROR, response.error), formData: { name, email } };
+      return { message: withReason(INITIAL_USER_ERROR, response.error), formData: kept };
     }
-    return { data: response.data, formData: { name, email } };
+    return { data: response.data, formData: kept };
   } catch (error) {
     console.error('Initial user creation failed:', safeErrorSummary(error));
-    return { message: withReason(INITIAL_USER_ERROR, undefined), formData: { name, email } };
+    return { message: withReason(INITIAL_USER_ERROR, undefined), formData: kept };
   }
 }
 
 export async function resetPassword(
   prevState: { message: string | null; success: string | null; formData: { email: string } },
   formData: FormData,
-  mode: 'reset' | 'request'
+  _mode: 'reset' | 'request'
 ) {
-  const email = String(formData.get('email') || '');
-  const failure = { message: 'Unable to reset your password. Please try again.', formData: { email } };
-  try {
-    if (mode === 'reset') {
-      const response = await keystoneClient(`
-        mutation($email: String!, $password: String!, $token: String!) {
-          redeemUserPasswordResetToken(email: $email, token: $token, password: $password) { code }
-        }
-      `, { email, password: String(formData.get('password') || ''), token: String(formData.get('token') || '') });
-      if (!response.success) {
-        return { message: withReason('Unable to reset your password.', response.error), formData: { email } };
-      }
-      if (response.data?.redeemUserPasswordResetToken?.code) {
-        return { message: 'This reset link is invalid or has expired. Request a new one.', formData: { email } };
-      }
-      return { success: 'Password has been reset. You can now sign in.', formData: { email } };
-    }
-    if (!passwordResetEmailAvailable()) {
-      return { message: RESET_EMAIL_UNAVAILABLE, formData: { email } };
-    }
-    const response = await keystoneClient(`
-      mutation($email: String!) { sendUserPasswordResetLink(email: $email) }
-    `, { email });
-    if (!response.success || response.data?.sendUserPasswordResetLink !== true) {
-      return { message: 'Unable to send the reset email. Please try again, or ask an administrator to set a new password for you.', formData: { email } };
-    }
-    return { success: 'If an account exists for that email, a reset link has been sent to it.', formData: { email } };
-  } catch (error) {
-    console.error('Password reset failed:', safeErrorSummary(error));
-    return failure;
-  }
+  void prevState
+  return { message: 'Ask the owner to set a new PIN.', formData: { email: String(formData.get('email') || '') } };
 }
 
 export async function getAuthenticatedUser() {

@@ -1,6 +1,7 @@
 import { list } from '@keystone-6/core'
 import { denyAll } from '@keystone-6/core/access'
-import { password, relationship, select, text } from '@keystone-6/core/fields'
+import { integer, password, relationship, select, text, timestamp } from '@keystone-6/core/fields'
+import { isLoginPhone } from '../../phones/parse'
 import { isSignedIn, permissionNames, permissions, type AccessArgs, relationFilter } from '../access'
 import { trackingFields } from './trackingFields'
 import { riderSignupsOpen } from '../domain/riderAccounts'
@@ -25,9 +26,15 @@ export const User = list({
   ui: { listView: { initialColumns: ['name', 'email', 'role', 'onboardingStatus'] } },
   hooks: {
     resolveInput: async ({ operation, resolvedData, context }) => {
-      if (operation !== 'create' || resolvedData.role) return resolvedData
+      const data = { ...resolvedData }
+      if (data.email === '') data.email = null
+      if (data.phone === '') data.phone = null
+      if (operation !== 'create' || data.role) return data
       const roleId = await firstUserAdminRole(context)
-      return roleId ? { ...resolvedData, role: { connect: { id: roleId } } } : resolvedData
+      return roleId ? { ...data, role: { connect: { id: roleId } } } : data
+    },
+    validateInput: ({ operation, resolvedData, addValidationError }) => {
+      if (operation === 'create' && !resolvedData.phone) addValidationError('A phone number is required.')
     },
   },
   access: {
@@ -36,9 +43,23 @@ export const User = list({
   },
   fields: {
     name: text({ validation: { isRequired: true } }),
-    email: text({ validation: { isRequired: true }, isIndexed: 'unique' }),
-    password: password({ validation: { isRequired: true, length: { min: 10 } }, isFilterable: false, isOrderable: false, access: { read: denyAll } }),
-    phone: text({ isFilterable: permissions.canManagePeople, isOrderable: permissions.canManagePeople, access: { read: selfField, update: selfField } }),
+    email: text({ isIndexed: 'unique', db: { isNullable: true } }),
+    password: password({
+      validation: { isRequired: true, length: { min: 6, max: 6 }, rejectCommon: false, match: { regex: /^\d{6}$/, explanation: 'Use a 6-digit PIN.' } },
+      isFilterable: false, isOrderable: false, access: { read: denyAll },
+    }),
+    phone: text({
+      isIndexed: 'unique', db: { isNullable: true },
+      isFilterable: permissions.canManagePeople, isOrderable: permissions.canManagePeople,
+      access: { read: selfField, update: selfField },
+      hooks: { validateInput: ({ resolvedData, addValidationError }) => {
+        const value = resolvedData.phone
+        if (value == null || value === '') return
+        if (!isLoginPhone(String(value))) addValidationError('Use a US, Canada, or Peru mobile number.')
+      } },
+    }),
+    pinFailures: integer({ defaultValue: 0, access: { read: () => false, create: () => false, update: () => false } }),
+    pinLockedUntil: timestamp({ access: { read: () => false, create: () => false, update: () => false } }),
     role: relationship({ ...relationFilter('Role'), ref: 'Role.assignedTo', access: { create: permissions.canManageRoles, update: permissions.canManageRoles } }),
     onboardingStatus: select({ options: [
       { label: 'Not started', value: 'not_started' }, { label: 'In progress', value: 'in_progress' },

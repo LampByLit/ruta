@@ -7,6 +7,8 @@ type User {
   email: String
   password: PasswordState
   phone: String
+  pinFailures: Int
+  pinLockedUntil: DateTime
   role: Role
   onboardingStatus: String
   fleetMemberships(where: FleetMembershipWhereInput! = {}, orderBy: [FleetMembershipOrderByInput!]! = [], take: Int, skip: Int! = 0, cursor: FleetMembershipWhereUniqueInput): [FleetMembership!]
@@ -35,6 +37,7 @@ scalar DateTime @specifiedBy(url: "https://datatracker.ietf.org/doc/html/rfc3339
 input UserWhereUniqueInput {
   id: ID
   email: String
+  phone: String
   driverProfile: DriverProfileWhereUniqueInput
   riderProfile: RiderProfileWhereUniqueInput
 }
@@ -45,8 +48,10 @@ input UserWhereInput {
   NOT: [UserWhereInput!]
   id: IDFilter
   name: StringFilter
-  email: StringFilter
-  phone: StringFilter
+  email: StringNullableFilter
+  phone: StringNullableFilter
+  pinFailures: IntNullableFilter
+  pinLockedUntil: DateTimeNullableFilter
   role: RoleWhereInput
   onboardingStatus: StringNullableFilter
   fleetMemberships: FleetMembershipManyRelationFilter
@@ -122,6 +127,28 @@ input StringNullableFilter {
   not: StringNullableFilter
 }
 
+input IntNullableFilter {
+  equals: Int
+  in: [Int!]
+  notIn: [Int!]
+  lt: Int
+  lte: Int
+  gt: Int
+  gte: Int
+  not: IntNullableFilter
+}
+
+input DateTimeNullableFilter {
+  equals: DateTime
+  in: [DateTime!]
+  notIn: [DateTime!]
+  lt: DateTime
+  lte: DateTime
+  gt: DateTime
+  gte: DateTime
+  not: DateTimeNullableFilter
+}
+
 input FleetMembershipManyRelationFilter {
   every: FleetMembershipWhereInput
   some: FleetMembershipWhereInput
@@ -146,17 +173,6 @@ input ReviewManyRelationFilter {
   none: ReviewWhereInput
 }
 
-input DateTimeNullableFilter {
-  equals: DateTime
-  in: [DateTime!]
-  notIn: [DateTime!]
-  lt: DateTime
-  lte: DateTime
-  gt: DateTime
-  gte: DateTime
-  not: DateTimeNullableFilter
-}
-
 input PasswordFilter {
   isSet: Boolean!
 }
@@ -166,6 +182,8 @@ input UserOrderByInput {
   name: OrderDirection
   email: OrderDirection
   phone: OrderDirection
+  pinFailures: OrderDirection
+  pinLockedUntil: OrderDirection
   onboardingStatus: OrderDirection
   createdAt: OrderDirection
   updatedAt: OrderDirection
@@ -183,6 +201,8 @@ input UserUpdateInput {
   email: String
   password: String
   phone: String
+  pinFailures: Int
+  pinLockedUntil: DateTime
   role: RoleRelateToOneForUpdateInput
   onboardingStatus: String
   fleetMemberships: FleetMembershipRelateToManyForUpdateInput
@@ -254,6 +274,8 @@ input UserCreateInput {
   email: String
   password: String
   phone: String
+  pinFailures: Int
+  pinLockedUntil: DateTime
   role: RoleRelateToOneForCreateInput
   onboardingStatus: String
   fleetMemberships: FleetMembershipRelateToManyForCreateInput
@@ -1219,17 +1241,6 @@ input RiderProfileWhereInput {
   cardSavedAt: DateTimeNullableFilter
   createdAt: DateTimeNullableFilter
   updatedAt: DateTimeNullableFilter
-}
-
-input IntNullableFilter {
-  equals: Int
-  in: [Int!]
-  notIn: [Int!]
-  lt: Int
-  lte: Int
-  gt: Int
-  gte: Int
-  not: IntNullableFilter
 }
 
 input RiderProfileOrderByInput {
@@ -4727,10 +4738,10 @@ type Mutation {
   deleteMarketplaceRegistration(where: MarketplaceRegistrationWhereUniqueInput!): MarketplaceRegistration
   deleteMarketplaceRegistrations(where: [MarketplaceRegistrationWhereUniqueInput!]!): [MarketplaceRegistration]
   endSession: Boolean!
-  authenticateUserWithPassword(email: String!, password: String!): UserAuthenticationWithPasswordResult
+  authenticateUserWithPassword(phone: String!, password: String!): UserAuthenticationWithPasswordResult
   createInitialUser(data: CreateInitialUserInput!): UserAuthenticationWithPasswordSuccess!
-  sendUserPasswordResetLink(email: String!): Boolean!
-  redeemUserPasswordResetToken(email: String!, token: String!, password: String!): RedeemUserPasswordResetTokenResult
+  sendUserPasswordResetLink(phone: String!): Boolean!
+  redeemUserPasswordResetToken(phone: String!, token: String!, password: String!): RedeemUserPasswordResetTokenResult
   createOperatorRide(idempotencyKey: String!, serviceId: ID!, pickupLabel: String!, dropoffLabel: String!, pickupPoint: JSON, dropoffPoint: JSON, scheduledFor: DateTime, passengerCount: Int, wheelchairAccessible: Boolean, riderName: String!, riderPhone: String!, receiptEmail: String, notes: String): JSON!
   marketplaceRideshareQuote(serviceId: ID!, pickupLabel: String!, dropoffLabel: String!, pickupPoint: JSON, dropoffPoint: JSON, scheduledFor: DateTime, passengerCount: Int, wheelchairAccessible: Boolean, handoffId: String): MarketplaceRideQuote!
   requestRide(quoteId: ID!, quoteProof: String!, passengerCount: Int, accessibilityNeeds: JSON, riderNotes: String, preciseRouteEncryptedRef: String, receiptEmail: String): RideRequestReceipt!
@@ -4797,8 +4808,8 @@ type UserAuthenticationWithPasswordFailure {
 
 input CreateInitialUserInput {
   name: String
-  email: String
   password: String
+  phone: String
 }
 
 type RedeemUserPasswordResetTokenResult {
@@ -4929,7 +4940,7 @@ type Query {
   marketplaceRegistrationsCount(where: MarketplaceRegistrationWhereInput! = {}): Int
   keystone: KeystoneMeta!
   authenticatedItem: AuthenticatedItem
-  validateUserPasswordResetToken(email: String!, token: String!): ValidateUserPasswordResetTokenResult
+  validateUserPasswordResetToken(phone: String!, token: String!): ValidateUserPasswordResetTokenResult
   redirectToInit: Boolean
   marketplaceRideshareServices(query: String, location: String, limit: Int, after: String): [MarketplaceRideshareService!]!
   marketplaceRidesharePopularPlaces(serviceId: ID!): [String!]!

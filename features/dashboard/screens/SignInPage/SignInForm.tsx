@@ -19,16 +19,16 @@ type SignInFormProps = {
 type ActionState = {
   message: string | null;
   formData: {
-    email: string;
-
+    phone: string;
+    country: string;
   };
 };
 
 const initialState: ActionState = {
   message: null,
   formData: {
-    email: '',
-
+    phone: '',
+    country: 'US',
   }
 };
 
@@ -59,39 +59,49 @@ export function SignInForm({ from }: SignInFormProps) {
       <form action={formAction} className="mt-8 space-y-4">
         <input type="hidden" name="from" value={from} />
         <div>
+          <Label htmlFor="country" className="text-sm font-medium text-foreground dark:text-foreground">Country</Label>
+          <select id="country" name="country" defaultValue={state.formData.country || 'US'} className="mt-2 flex h-9 w-full rounded-md border border-input bg-muted/40 px-3 text-sm">
+            <option value="US">United States or Canada</option>
+            <option value="PE">Peru</option>
+          </select>
+        </div>
+        <div>
           <Label
-            htmlFor="email"
+            htmlFor="phone"
             className="text-sm font-medium text-foreground dark:text-foreground"
           >
-            Email
+            Phone
           </Label>
           <Input
-            type="email"
-            id="email"
-            name="email"
-            autoComplete="email"
-            placeholder="you@example.com"
+            type="tel"
+            id="phone"
+            name="phone"
+            autoComplete="username"
+            inputMode="tel"
+            placeholder="415 555 2671"
             className="mt-2 bg-muted/40"
-            defaultValue={state.formData.email}
+            defaultValue={state.formData.phone}
             required
           />
         </div>
         <div>
           <Label
-            htmlFor="password"
+            htmlFor="pin"
             className="text-sm font-medium text-foreground dark:text-foreground"
           >
-            Password
+            PIN
           </Label>
           <div className="relative mt-2">
             <Input
               type={showPassword ? "text" : "password"}
-              id="password"
-              name="password"
+              id="pin"
+              name="pin"
               autoComplete="current-password"
-              placeholder="••••••••"
+              inputMode="numeric"
+              pattern="[0-9]{6}"
+              maxLength={6}
+              placeholder="6 digits"
               className="pr-10 bg-muted/40"
-
               required
             />
             <button

@@ -19,11 +19,11 @@ web
 - **Riders.** They request a quote and a ride for a service, then follow trip status and their past rides, usually on a phone.
 
 ## Product Purpose
-Openfront Rideshare is a self-hostable ride-booking and fleet-operations application for independent drivers and fleets.
+Ruta is a self-hostable ride-booking and fleet-operations application for independent drivers and fleets.
 
 ## Operating Context
 - **Trip stages.** A trip moves through requested, assigned, arriving, in progress and completed. It can also end cancelled or no-show.
-- **Shared shell.** One Openfront dashboard shell wraps every platform page. It is identical across products and is not this product's to change.
+- **Shared shell.** One Ruta dashboard shell wraps every platform page. It is identical across products and is not this product's to change.
 
 ## Capabilities and Constraints
 - **Platform routes:**
@@ -47,7 +47,7 @@ Openfront Rideshare is a self-hostable ride-booking and fleet-operations applica
 
 ## Brand Commitments
 - The service name, logo and contact details come from the operator's settings. The demo service is Harbor Independent Mobility.
-- Openfront branding stays in the shared shell.
+- Ruta branding stays in the shared shell.
 
 ## Evidence on Hand
 - Demo data (2026-10-25):

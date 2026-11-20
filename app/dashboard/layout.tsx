@@ -16,7 +16,8 @@ export default function DashboardLayout({
   return (
     <ThemeProvider
       attribute="class"
-      defaultTheme="system"
+      defaultTheme="light"
+      forcedTheme="light"
       enableSystem
       disableTransitionOnChange
     >

@@ -47,7 +47,7 @@ export async function drivingRoute(from: LngLat, to: LngLat, signal?: AbortSigna
 }
 
 /** Places this device chose before, newest first (labels and points only). */
-const RECENT_KEY = 'openfront-rideshare-recent-places-v2'
+const RECENT_KEY = 'ruta-recent-places-v2'
 export function recentPlaces(): Place[] {
   try {
     const value = JSON.parse(localStorage.getItem(RECENT_KEY) || '[]')

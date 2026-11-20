@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState } from 'react'
 
 export type CommandIntent = { version: 1; actorId: string; resource: string; purpose: 'offer' | 'transition' | 'cancel'; key: string; body: Record<string, unknown>; phase: 'pending' | 'resolved'; receipt?: string }
-export const commandPrefix = 'openfront-rideshare-command-v1:'
+export const commandPrefix = 'ruta-command-v1:'
 export const commandStorageKey = (actorId: string, resource: string) => `${commandPrefix}${encodeURIComponent(actorId)}:${encodeURIComponent(resource)}`
 export function readCommand(raw: string | null, actorId: string, resource: string): CommandIntent | null {
   if (!raw) return null

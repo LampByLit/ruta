@@ -238,8 +238,8 @@ export async function inspectExistingDemoFleet(
     missing.push('Provider connections (mapping, identity, background check)')
   }
   const registration = fleet.marketplaceRegistration
-  if (!registration || !['source-openfront-rideshare-local', `source-rideshare-${fleetId}`].includes(registration.sourceId)
-    || registration.platform !== 'openfront-rideshare' || registration.status !== 'active' || registration.manifestVersion !== '1') {
+  if (!registration || !['source-ruta-local', `source-rideshare-${fleetId}`].includes(registration.sourceId)
+    || registration.platform !== 'ruta' || registration.status !== 'active' || registration.manifestVersion !== '1') {
     missing.push('Marketplace registration')
   }
   const manualProvider = paymentProviders.rows.find(row => row.code === 'pp_manual')

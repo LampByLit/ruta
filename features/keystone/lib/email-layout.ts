@@ -3,7 +3,7 @@
 // clients that invert colours in dark mode keep text readable, and the prefers-color-scheme block gives
 // Apple Mail / iOS a proper dark palette.
 
-export const SUPPORT_EMAIL = "hello@rideshare.openship.org";
+export const SUPPORT_EMAIL = "";
 
 const FONT = "-apple-system,BlinkMacSystemFont,'Segoe UI',Helvetica,Arial,sans-serif";
 const C = {
@@ -23,7 +23,7 @@ export const escapeHtml = (value: unknown) =>
   String(value ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]!));
 
 /** Store name for the header: the display name in SMTP_FROM ("Acme <hello@acme.com>"), else a fallback. */
-export function storeNameFromEnv(fallback = "Rideshare") {
+export function storeNameFromEnv(fallback = "Ruta") {
   const match = /^\s*"?([^"<]+?)"?\s*</.exec(process.env.SMTP_FROM || "");
   return match?.[1]?.trim() || fallback;
 }
@@ -143,7 +143,7 @@ ${input.body}
 </table>
 </td></tr>
 <tr><td class="em-pad" style="padding:20px 32px 8px;font-family:${FONT};font-size:13px;line-height:20px;color:${C.subtle};">
-<span class="em-muted" style="color:${C.subtle};">${input.footerNote ? `${input.footerNote}<br>` : ""}Questions? Email <a class="em-link" href="mailto:${support}" style="color:${C.muted};text-decoration:underline;">${support}</a>.<br>${store}</span>
+<span class="em-muted" style="color:${C.subtle};">${input.footerNote ? `${input.footerNote}<br>` : ""}${support ? `Questions? Email <a class="em-link" href="mailto:${support}" style="color:${C.muted};text-decoration:underline;">${support}</a>.<br>` : ""}${store}</span>
 </td></tr>
 </table>
 </td></tr>

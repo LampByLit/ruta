@@ -36,14 +36,14 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
 import { AdminMeta } from '../hooks/useAdminMeta'
-import { Home, Database, ChevronRight, Package } from 'lucide-react'
+import { Home, ChevronRight } from 'lucide-react'
 import { Logo, LogoIcon } from '@/features/dashboard/components/Logo'
 import { UserProfileClient } from './UserProfileClient'
 import { OnboardingCards } from '@/features/platform/onboarding/components/OnboardingCards'
 import { dismissOnboarding } from '@/features/platform/onboarding/actions/onboarding'
 import { platformNavGroups, platformStandaloneItems, getPlatformNavItemsWithBasePath } from '@/features/platform/lib/navigation'
 import { useDashboard } from '../context/DashboardProvider'
-import { visiblePlatformItems, visibleSidebarLists } from '../lib/sidebarAccess'
+import { visiblePlatformItems } from '../lib/sidebarAccess'
 
 interface User {
   id: string;
@@ -92,11 +92,6 @@ export function Sidebar({ adminMeta, user, onOpenDialog }: SidebarProps) {
   )
 
   // Convert lists to sidebar links format
-  const modelLinks = visibleSidebarLists(listsArray as any[], user).map((list: any) => ({
-    title: list.label,
-    href: `/dashboard/${list.path}`
-  }))
-
   // Platform navigation groups with proper basePath
   const platformItemsWithBasePath = visiblePlatformItems(
     getPlatformNavItemsWithBasePath(basePath),
@@ -130,7 +125,7 @@ export function Sidebar({ adminMeta, user, onOpenDialog }: SidebarProps) {
         </SidebarMenuButton>
         <SidebarMenuButton asChild>
           <div className="hidden group-has-[[data-collapsible=icon]]/sidebar-wrapper:block">
-            <LogoIcon className="size-5 text-cyan-600" color="#0891b2" suffix="-full-header" />
+            <LogoIcon className="size-6 text-[13px]" />
           </div>
         </SidebarMenuButton>
       </SidebarHeader>
@@ -152,7 +147,7 @@ export function Sidebar({ adminMeta, user, onOpenDialog }: SidebarProps) {
 
         {/* Platform Routes */}
         <SidebarGroup>
-          <SidebarGroupLabel>Platform</SidebarGroupLabel>
+          <SidebarGroupLabel>Ruta</SidebarGroupLabel>
           <SidebarMenu className="group-has-[[data-collapsible=icon]]/sidebar-wrapper:hidden gap-0">
             {/* Standalone Items in Expanded Mode */}
             {standaloneItemsWithBasePath.map((item) => (
@@ -269,94 +264,6 @@ export function Sidebar({ adminMeta, user, onOpenDialog }: SidebarProps) {
           </SidebarMenu>
         </SidebarGroup>
 
-        {/* Models */}
-        <SidebarGroup>
-          <SidebarGroupLabel>Models</SidebarGroupLabel>
-          <SidebarMenu className="group-has-[[data-collapsible=icon]]/sidebar-wrapper:hidden">
-            <Collapsible
-              asChild
-              defaultOpen={modelLinks.some(link => isLinkActive(link.href))}
-              className="group/collapsible"
-            >
-              <SidebarMenuItem>
-                <CollapsibleTrigger asChild>
-                  <SidebarMenuButton>
-                    <Package className="h-4 w-4" />
-                    <span>Models</span>
-                    <ChevronRight className="ml-auto h-4 w-4 transition-transform duration-200 group-data-[state=open]/collapsible:rotate-90" />
-                  </SidebarMenuButton>
-                </CollapsibleTrigger>
-                <CollapsibleContent>
-                  <SidebarMenuSub>
-                    {modelLinks.map((link) => {
-                      const handleClick = () => {
-                        setOpenMobile(false)
-                      }
-
-                      return (
-                        <SidebarMenuSubItem key={link.href}>
-                          <SidebarMenuSubButton
-                            asChild
-                            isActive={isLinkActive(link.href)}
-                          >
-                            <Link href={link.href} onClick={handleClick}>
-                              <span>{link.title}</span>
-                            </Link>
-                          </SidebarMenuSubButton>
-                        </SidebarMenuSubItem>
-                      )
-                    })}
-                  </SidebarMenuSub>
-                </CollapsibleContent>
-              </SidebarMenuItem>
-            </Collapsible>
-          </SidebarMenu>
-
-          {/* Models Dropdown - Icon Mode */}
-          <SidebarMenu className="hidden group-has-[[data-collapsible=icon]]/sidebar-wrapper:block">
-            <DropdownMenu>
-              <SidebarMenuItem>
-                <DropdownMenuTrigger asChild>
-                  <SidebarMenuButton className="data-[state=open]:bg-sidebar-accent data-[state=open]:text-sidebar-accent-foreground">
-                    <Package className="h-4 w-4" />
-                  </SidebarMenuButton>
-                </DropdownMenuTrigger>
-                <DropdownMenuContent
-                  side={isMobile ? "bottom" : "right"}
-                  align={isMobile ? "end" : "start"}
-                  className="min-w-56"
-                >
-                  <div className="max-h-[calc(100vh-16rem)] overflow-y-auto py-1">
-                    {modelLinks.map((link) => {
-                      const handleClick = () => {
-                        setOpenMobile(false)
-                      }
-
-                      return (
-                        <DropdownMenuItem
-                          asChild
-                          key={link.href}
-                          className={
-                            isLinkActive(link.href)
-                              ? "bg-blue-50 text-blue-600"
-                              : ""
-                          }
-                        >
-                          <Link href={link.href} onClick={handleClick}>
-                            <span>{link.title}</span>
-                            {isLinkActive(link.href) && (
-                              <div className="ml-auto h-2 w-2 rounded-full bg-blue-600" />
-                            )}
-                          </Link>
-                        </DropdownMenuItem>
-                      )
-                    })}
-                  </div>
-                </DropdownMenuContent>
-              </SidebarMenuItem>
-            </DropdownMenu>
-          </SidebarMenu>
-        </SidebarGroup>
       </SidebarContent>
       
       <SidebarFooter>

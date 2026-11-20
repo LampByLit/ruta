@@ -1,14 +1,4 @@
 import { cn } from "@/lib/utils";
-import { Syne } from "next/font/google";
-import { LogoIcon } from "./LogoIcon";
-
-const syne = Syne({
-  subsets: ["latin"],
-  display: "swap",
-  adjustFontFallback: false,
-});
-
-const LOGO_COLOR = "#0891b2";
 
 interface LogoProps {
   className?: string;
@@ -17,52 +7,20 @@ interface LogoProps {
   variant?: "default" | "sidebar";
 }
 
-export const Logo = ({
-  className,
-  textClassName,
-  iconClassName,
-  variant = "default",
-}: LogoProps) => {
+export const Logo = ({ className, textClassName, variant = "default" }: LogoProps) => {
   const isSidebar = variant === "sidebar";
-
   return (
-    <div
-      className={cn(
-        className,
-        "flex items-center text-left",
-        isSidebar ? "gap-1.5" : "gap-3",
-      )}
-    >
-      <LogoIcon
-        className={cn("shrink-0", isSidebar ? "size-5" : "size-8", iconClassName)}
-        color={LOGO_COLOR}
-        suffix="-full"
-      />
-      <div className={cn("flex flex-col justify-center", isSidebar ? "-mt-0.5" : "-mt-1")}>
-        <span
-          className={cn(
-            syne.className,
-            textClassName,
-            "font-semibold tracking-tight text-foreground",
-            isSidebar ? "text-[15px] leading-none" : "text-xl",
-          )}
-        >
-          open<span className="font-normal">front</span>
-        </span>
-        <span
-          className={cn(
-            syne.className,
-            "font-bold uppercase text-muted-foreground",
-            isSidebar
-              ? "mt-0.5 text-xs leading-none tracking-[0.08em]"
-              : "text-xs tracking-wider",
-          )}
-        >
-          Rideshare
-        </span>
-      </div>
+    <div className={cn("flex items-center", isSidebar ? "gap-2" : "gap-3", className)}>
+      <LogoIcon className={isSidebar ? "size-6" : "size-8"} />
+      <span className={cn("font-semibold tracking-tight text-[#47404a]", isSidebar ? "text-[17px] text-[#ecfc03]" : "text-xl", textClassName)}>
+        Ruta
+      </span>
     </div>
   );
 };
 
-export { LogoIcon };
+export const LogoIcon = ({ className }: { className?: string; color?: string; suffix?: string }) => (
+  <span className={cn("grid shrink-0 place-items-center rounded-md bg-[#ecfc03] font-semibold text-[#47404a]", className)} aria-hidden="true">
+    R
+  </span>
+);

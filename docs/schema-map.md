@@ -1,4 +1,4 @@
-# Openfront Rideshare — schema map
+# Ruta — schema map
 
 Source: `features/keystone/models/**` (38 lists), `features/keystone/mutations/**` (custom GraphQL), `features/keystone/access.ts`, `features/keystone/mutations/onboarding.ts` (starter seed). Read 2026-10-24.
 

@@ -263,7 +263,7 @@ var init_access = __esm({
 });
 
 // features/keystone/lib/email-layout.ts
-function storeNameFromEnv(fallback = "Rideshare") {
+function storeNameFromEnv(fallback = "Ruta") {
   const match = /^\s*"?([^"<]+?)"?\s*</.exec(process.env.SMTP_FROM || "");
   return match?.[1]?.trim() || fallback;
 }
@@ -336,7 +336,7 @@ ${input.body}
 </table>
 </td></tr>
 <tr><td class="em-pad" style="padding:20px 32px 8px;font-family:${FONT};font-size:13px;line-height:20px;color:${C.subtle};">
-<span class="em-muted" style="color:${C.subtle};">${input.footerNote ? `${input.footerNote}<br>` : ""}Questions? Email <a class="em-link" href="mailto:${support}" style="color:${C.muted};text-decoration:underline;">${support}</a>.<br>${store}</span>
+<span class="em-muted" style="color:${C.subtle};">${input.footerNote ? `${input.footerNote}<br>` : ""}${support ? `Questions? Email <a class="em-link" href="mailto:${support}" style="color:${C.muted};text-decoration:underline;">${support}</a>.<br>` : ""}${store}</span>
 </td></tr>
 </table>
 </td></tr>
@@ -348,7 +348,7 @@ var SUPPORT_EMAIL, FONT, C, escapeHtml, p, emailParagraph, emailMuted;
 var init_email_layout = __esm({
   "features/keystone/lib/email-layout.ts"() {
     "use strict";
-    SUPPORT_EMAIL = "hello@rideshare.openship.org";
+    SUPPORT_EMAIL = "";
     FONT = "-apple-system,BlinkMacSystemFont,'Segoe UI',Helvetica,Arial,sans-serif";
     C = {
       canvas: "#f4f4f5",
@@ -941,6 +941,14 @@ function nanp(digits) {
 }
 function isLoginPhone(value) {
   return /^\+1[2-9]\d{2}[2-9]\d{6}$/.test(value) || /^\+519\d{8}$/.test(value);
+}
+function canonicalPhone(input, country) {
+  const trimmed = input.trim();
+  const fromPrefix = trimmed.startsWith("+51") ? "PE" : trimmed.startsWith("+1") ? "US" : null;
+  const chosen = fromPrefix || country;
+  if (!chosen) return null;
+  const phone = toE164(trimmed, chosen);
+  return phone && isLoginPhone(phone) ? phone : null;
 }
 function peruMobile(digits) {
   let national = digits;
@@ -1946,7 +1954,7 @@ var MarketplaceRegistration = (0, import_core13.list)({
     label: labels.marketplaceRegistration,
     fleet: (0, import_fields14.relationship)({ ...relationFilter("Fleet"), ref: "Fleet.marketplaceRegistration", access: { create: () => false, update: () => false } }),
     sourceId: (0, import_fields14.text)({ validation: { isRequired: true }, isIndexed: "unique" }),
-    platform: (0, import_fields14.text)({ defaultValue: "openfront-rideshare" }),
+    platform: (0, import_fields14.text)({ defaultValue: "ruta" }),
     status: (0, import_fields14.select)({ options: ["draft", "active", "paused", "revoked"].map((value) => ({ label: value, value })), defaultValue: "draft" }),
     manifestVersion: (0, import_fields14.text)({ defaultValue: "1" }),
     publicBaseUrl: (0, import_fields14.text)(),
@@ -2244,13 +2252,19 @@ async function saveFleetBranding(_root, args, context) {
 var import_schema = require("@graphql-tools/schema");
 init_access();
 
+// features/keystone/domain/freshAdmin.ts
+async function phoneAccountCount(prisma) {
+  return prisma.user.count({ where: { phone: { not: null } } });
+}
+async function discardPhonelessAccounts(prisma) {
+  if (await phoneAccountCount(prisma) > 0) return false;
+  await prisma.user.deleteMany({ where: { OR: [{ phone: null }, { phone: "" }] } });
+  return true;
+}
+
 // features/keystone/mutations/redirectToInit.ts
 async function redirectToInit(root, args, context) {
-  const userCount = await context.sudo().query.User.count({});
-  if (userCount === 0) {
-    return true;
-  }
-  return false;
+  return await phoneAccountCount(context.prisma) === 0;
 }
 var redirectToInit_default = redirectToInit;
 
@@ -2606,7 +2620,7 @@ async function riderTripStatus(_root, args, context) {
 }
 
 // features/integrations/mapping/osm.ts
-var USER_AGENT = "openfront-rideshare/1.0 (+https://github.com/openshiporg/openfront-rideshare)";
+var USER_AGENT = "Ruta/1.0 (+https://github.com/LampByLit/ruta)";
 var osrmBase = () => (process.env.OSRM_URL || "https://router.project-osrm.org").replace(/\/+$/, "");
 function cache(max, ttlMs) {
   const entries = /* @__PURE__ */ new Map();
@@ -2840,7 +2854,7 @@ async function marketplaceRideshareServices(_root, args, context) {
       fleet: { ...projectFleetBrand(service.fleet), id: service.fleet.id, name: service.fleet.name, publicDescription: service.fleet.publicDescription, heroImageUrl: service.fleet.heroImage?.url ?? null, publicCity: service.fleet.publicCity, countryCode: service.fleet.countryCode },
       startingFareMinor: service.fareRules?.[0]?.minimumFareMinor ?? null,
       currencyCode: service.fareRules?.[0]?.currencyCode || service.fleet.currencyCode,
-      extension: { schema: "openfront.rideshare.service/v1", value: { category: service.category, passengerCapacity: service.passengerCapacity, wheelchairAccessible: service.wheelchairAccessible, serviceAreas: publicRegionLabels } }
+      extension: { schema: "ruta.rideshare.service/v1", value: { category: service.category, passengerCapacity: service.passengerCapacity, wheelchairAccessible: service.wheelchairAccessible, serviceAreas: publicRegionLabels } }
     };
   });
 }
@@ -3949,7 +3963,7 @@ async function inspectExistingDemoFleet(sudo, context, fleet, userId, mode) {
     missing.push("Provider connections (mapping, identity, background check)");
   }
   const registration = fleet.marketplaceRegistration;
-  if (!registration || !["source-openfront-rideshare-local", `source-rideshare-${fleetId}`].includes(registration.sourceId) || registration.platform !== "openfront-rideshare" || registration.status !== "active" || registration.manifestVersion !== "1") {
+  if (!registration || !["source-ruta-local", `source-rideshare-${fleetId}`].includes(registration.sourceId) || registration.platform !== "ruta" || registration.status !== "active" || registration.manifestVersion !== "1") {
     missing.push("Marketplace registration");
   }
   const manualProvider = paymentProviders.rows.find((row) => row.code === "pp_manual");
@@ -4029,7 +4043,7 @@ async function bootstrapRideshare(_root, args, context) {
       return { fleetId: racedFleet[0].id, created: false, summary: diagnostic2 };
     }
     const full = args.mode === "full";
-    const fleet = await transactionSudo.query.Fleet.createOne({ data: { name: "Harbor Independent Mobility", logoIcon: DEFAULT_STORE_LOGO_ICON, logoColor: DEFAULT_STORE_LOGO_COLOR, slug: demoSlug, status: "active", operationsMode: "manual", publicDescription: "A driver-owned cooperative serving central neighborhoods with transparent source-owned pricing.", publicCity: "Harbor City", countryCode: "US", currencyCode: "USD", timezone: "America/New_York", supportEmail: "hello@rideshare.openship.org", preciseLocationRetentionDays: "30" }, query: "id" });
+    const fleet = await transactionSudo.query.Fleet.createOne({ data: { name: "Harbor Independent Mobility", logoIcon: DEFAULT_STORE_LOGO_ICON, logoColor: DEFAULT_STORE_LOGO_COLOR, slug: demoSlug, status: "active", operationsMode: "manual", publicDescription: "A driver-owned cooperative serving central neighborhoods with transparent source-owned pricing.", publicCity: "Harbor City", countryCode: "US", currencyCode: "USD", timezone: "America/New_York", supportEmail: "", preciseLocationRetentionDays: "30" }, query: "id" });
     await transactionSudo.query.FleetMembership.createOne({ data: { fleet: { connect: { id: fleet.id } }, user: { connect: { id: userId } }, role: "owner", status: "active", acceptedAt: /* @__PURE__ */ new Date() } });
     const area = await transactionSudo.query.ServiceArea.createOne({ data: { fleet: { connect: { id: fleet.id } }, name: "Harbor City Core", publicRegionLabel: "Harbor City central neighborhoods", countryCode: "US", status: "active", coarseBounds: { disclosure: "Coarse public service region; exact driver locations are not published." } }, query: "id" });
     const service = await transactionSudo.query.RideService.createOne({ data: { fleet: { connect: { id: fleet.id } }, serviceAreas: { connect: [{ id: area.id }] }, name: "Independent Standard", slug: `${demoSlug}-standard`, description: "Everyday rides from locally operated independent drivers.", status: "active", category: "standard", passengerCapacity: 4, advanceBookingMinutes: 0 }, query: "id" });
@@ -4062,7 +4076,7 @@ async function bootstrapRideshare(_root, args, context) {
     for (const [name, kind, adapter] of [["Open map routing", "mapping", "osm"], ["Unconfigured identity evidence", "identity", "manual"], ["Unconfigured background-check evidence", "background_check", "manual"]]) {
       await transactionSudo.query.ProviderConnection.createOne({ data: { fleet: { connect: { id: fleet.id } }, name, kind, adapter, status: kind === "mapping" ? "active" : "unconfigured", capabilities: [], evidencePolicyUrl: "" } });
     }
-    await transactionSudo.query.MarketplaceRegistration.createOne({ data: { fleet: { connect: { id: fleet.id } }, sourceId: `source-rideshare-${fleet.id}`, platform: "openfront-rideshare", status: "active", manifestVersion: "1", publicBaseUrl: requestBaseUrl(context.req), capabilities: ["marketplace.discovery", "rideshare.quote", "rideshare.request", "rideshare.trip.view"], verificationEvidence: { localContractTestsRequired: true } } });
+    await transactionSudo.query.MarketplaceRegistration.createOne({ data: { fleet: { connect: { id: fleet.id } }, sourceId: `source-rideshare-${fleet.id}`, platform: "ruta", status: "active", manifestVersion: "1", publicBaseUrl: requestBaseUrl(context.req), capabilities: ["marketplace.discovery", "rideshare.quote", "rideshare.request", "rideshare.trip.view"], verificationEvidence: { localContractTestsRequired: true } } });
     const persistedFleet = await transactionSudo.query.Fleet.findOne({ where: { id: fleet.id }, query: demoSeedInspectionSelections.fleet });
     const diagnostic = await inspectExistingDemoFleet(transactionSudo, transactionContext, persistedFleet, userId, args.mode);
     await transactionSudo.query.User.updateOne({ where: { id: userId }, data: { onboardingStatus: diagnostic.onboardingStatus } });
@@ -6039,14 +6053,6 @@ function nextPinState(failures, success, now = Date.now()) {
   if (fails >= PIN_ATTEMPTS) return { pinFailures: 0, pinLockedUntil: new Date(now + PIN_LOCK_MS) };
   return { pinFailures: fails, pinLockedUntil: null };
 }
-function canonicalPhone(input, country) {
-  const trimmed = input.trim();
-  const fromPrefix = trimmed.startsWith("+51") ? "PE" : trimmed.startsWith("+1") ? "US" : null;
-  const chosen = fromPrefix || country;
-  if (!chosen) return null;
-  const phone = toE164(trimmed, chosen);
-  return phone && isLoginPhone(phone) ? phone : null;
-}
 async function pinLocked(prisma, phone, now = Date.now()) {
   const user = await prisma.user.findUnique({ where: { phone }, select: { pinLockedUntil: true } });
   return Boolean(user?.pinLockedUntil && user.pinLockedUntil.getTime() > now);
@@ -6216,6 +6222,14 @@ function extendGraphqlSchema(baseSchema) {
     },
     Mutation: { createOperatorRide, startTripCardPayment, confirmTripCardPayment, startRiderCardSetup, confirmRiderCardSetup, removeRiderCard, retryTripCharge, reportDriverLocation, addFleetMember, updateFleetMember, addDriverTimeOff, removeDriverTimeOff, triageSafetyIncident: updateSafetyIncident, triageSupportCase: updateSupportCase, moderateReview, confirmManualPayment, confirmManualRefund, setupFleet: createFleet, addFleetDriver, addFleetVehicle, assignVehicleDrivers, addComplianceDocument, reviewComplianceDocument, reviewDriver, reviewVehicle, setDriverAvailability, setDriverOnline: autoDispatchAfter(setDriverOnline, "online"), setupServiceArea: createServiceArea, setupRideService: createRideService, setupFareRule: createFareRule, saveFleetBranding, marketplaceRideshareQuote, requestRide: autoDispatchAfter(requestRide, "request"), resolveRideRequestIntent, offerRideToDriver, respondToRideOffer: autoDispatchAfter(respondToRideOffer, "response"), transitionTrip: receiptAfterTransition(chargeAfterTransition(transitionTrip)), cancelRideRequest, cancelRide: chargeAfterCancel(cancelRide), recordTripLocation, submitTripReview, reportSafetyIncident, openSupportCase, sendTripMessage, initiateTripPayment, requestTripRefund, bootstrapRideshare, dismissRideshareOnboarding, refreshRideshareClocks, expireRideOffers, expireRequestFleetOffers }
   } });
+  const createInitial = merged.getMutationType()?.getFields().createInitialUser;
+  if (createInitial?.resolve) {
+    const originalInit = createInitial.resolve;
+    createInitial.resolve = async (root, args, context, info) => {
+      await discardPhonelessAccounts(context.prisma);
+      return originalInit(root, args, context, info);
+    };
+  }
   const authenticate = merged.getMutationType()?.getFields().authenticateUserWithPassword;
   if (authenticate?.resolve) {
     const original = authenticate.resolve;
@@ -6319,7 +6333,7 @@ function throwKeystonePrismaErrors(client) {
 // features/keystone/index.ts
 var production = process.env.NODE_ENV === "production";
 var building = process.argv.includes("build") || process.env.NEXT_PHASE === "phase-production-build";
-var databaseURL = process.env.DATABASE_URL || "postgresql://localhost/openfront_rideshare";
+var databaseURL = process.env.DATABASE_URL || "postgresql://localhost/ruta";
 var sessionSecret = process.env.SESSION_SECRET || "development-only-session-secret-change-me-now";
 if (production && !building) {
   const missing = [];

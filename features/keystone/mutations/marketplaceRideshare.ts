@@ -81,7 +81,7 @@ export async function marketplaceRideshareServices(_root: unknown, args: { query
       readiness: rideReadiness(service.fleet.operationsMode), areasTruncated: service.serviceAreas.length > 24, nextCursor: services.length > limit && index === limit - 1 ? Buffer.from(JSON.stringify({ v: 1, query, location, name: service.name, id: service.id })).toString('base64url') : null,
       fleet: { ...projectFleetBrand(service.fleet), id: service.fleet.id, name: service.fleet.name, publicDescription: service.fleet.publicDescription, heroImageUrl: service.fleet.heroImage?.url ?? null, publicCity: service.fleet.publicCity, countryCode: service.fleet.countryCode },
       startingFareMinor: service.fareRules?.[0]?.minimumFareMinor ?? null, currencyCode: service.fareRules?.[0]?.currencyCode || service.fleet.currencyCode,
-      extension: { schema: 'openfront.rideshare.service/v1', value: { category: service.category, passengerCapacity: service.passengerCapacity, wheelchairAccessible: service.wheelchairAccessible, serviceAreas: publicRegionLabels } },
+      extension: { schema: 'ruta.rideshare.service/v1', value: { category: service.category, passengerCapacity: service.passengerCapacity, wheelchairAccessible: service.wheelchairAccessible, serviceAreas: publicRegionLabels } },
     }
   })
 }

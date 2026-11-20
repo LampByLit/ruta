@@ -1,4 +1,4 @@
-/** Consumer-side reference adapter for openfront-marketplace. This file is not imported by the source app. */
+/** Consumer-side reference adapter for ruta-marketplace. This file is not imported by the source app. */
 import discoveryCriteriaSchema from './schemas/rideshare-discovery.schema.json'
 
 export const rideshareCapability = {

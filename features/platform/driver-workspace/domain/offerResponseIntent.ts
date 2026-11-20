@@ -1,5 +1,5 @@
 export type OfferResponseIntent = { offerId: string; response: 'accept' | 'decline'; idempotencyKey: string }
-const prefix = 'openfront-rideshare-offer-response-v1:'
+const prefix = 'ruta-offer-response-v1:'
 export const offerResponseStorageKey = (offerId: string) => `${prefix}${offerId}`
 
 export function readOfferResponseIntent(raw: string | null, offerId: string): OfferResponseIntent | null {
@@ -39,7 +39,7 @@ export function acknowledgeOfferResponse(storage: Pick<Storage, 'getItem' | 'set
   const key = offerResponseStorageKey(intent.offerId)
   const pending = readOfferResponseIntent(storage.getItem(key), intent.offerId)
   if (!pending || JSON.stringify(pending) !== JSON.stringify(intent) || !receipt) throw new Error('Original response acknowledgement could not be retained.')
-  const acknowledgementKey = `openfront-rideshare-offer-ack-v1:${intent.offerId}:${intent.idempotencyKey}`
+  const acknowledgementKey = `ruta-offer-ack-v1:${intent.offerId}:${intent.idempotencyKey}`
   const serialized = JSON.stringify({ version: 1, intent, receipt })
   storage.setItem(acknowledgementKey, serialized)
   if (storage.getItem(acknowledgementKey) !== serialized) throw new Error('Response acknowledgement could not be retained.')

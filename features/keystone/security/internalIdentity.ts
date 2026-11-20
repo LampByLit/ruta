@@ -29,9 +29,9 @@ export function verifiedInternalIdentity(
 ) {
   const loopback = /^(?:127\.|::1$|::ffff:127\.)/.test(String(socketAddress || ''))
   if (!loopback || secret.length < 32) return null
-  const identity = String(headers['x-openfront-client-identity'] || '')
-  const timestamp = String(headers['x-openfront-client-timestamp'] || '')
-  const signature = String(headers['x-openfront-client-signature'] || '')
+  const identity = String(headers['x-ruta-client-identity'] || '')
+  const timestamp = String(headers['x-ruta-client-timestamp'] || '')
+  const signature = String(headers['x-ruta-client-signature'] || '')
   if (!/^[a-f0-9]{64}$/.test(identity) || !/^\d{10}$/.test(timestamp) || !/^[a-f0-9]{64}$/.test(signature)) return null
   const age = Math.abs(now - Number(timestamp) * 1_000)
   if (!Number.isFinite(age) || age > INTERNAL_IDENTITY_MAX_AGE_MS) return null

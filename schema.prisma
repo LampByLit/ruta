@@ -954,7 +954,7 @@ model MarketplaceRegistration {
   id                   String    @id @default(cuid())
   fleet                Fleet?    @relation("Fleet_marketplaceRegistration")
   sourceId             String    @unique @default("")
-  platform             String    @default("openfront-rideshare")
+  platform             String    @default("ruta")
   status               String?   @default("draft")
   manifestVersion      String    @default("1")
   publicBaseUrl        String    @default("")

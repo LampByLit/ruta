@@ -41,9 +41,9 @@ export function internalIdentityHeaders(
     const signed = signInternalClientIdentity(source, secret, now)
     if (!signed) return {}
     return {
-      'x-openfront-client-identity': signed.identity,
-      'x-openfront-client-timestamp': signed.timestamp,
-      'x-openfront-client-signature': signed.signature,
+      'x-ruta-client-identity': signed.identity,
+      'x-ruta-client-timestamp': signed.timestamp,
+      'x-ruta-client-signature': signed.signature,
     }
   } catch {
     return {}

@@ -6,7 +6,6 @@ import 'dotenv/config'
 import { models } from './models'
 import { withCreateAwareUi, withDeleteAwareUi, withItemViewAwareUi } from './ui-create-access'
 import { extendGraphqlSchema } from './mutations'
-import { sendPasswordResetEmail } from './lib/mail'
 import { permissionNames, permissions } from './access'
 import { pooledDatabaseUrl } from './database-url';
 // Keystone returns failed queries as values; this makes them throw so transactions roll back.
@@ -29,11 +28,12 @@ if (production && !building) {
 
 const session = statelessSessions({ maxAge: 60 * 60 * 24 * 30, secret: sessionSecret })
 const { withAuth } = createAuth({
-  listKey: 'User', identityField: 'email', secretField: 'password',
+  listKey: 'User', identityField: 'phone', secretField: 'password',
   // The first user's Admin role is assigned by the User resolveInput hook (see models/User.ts).
-  initFirstItem: { fields: ['name', 'email', 'password'] },
-  passwordResetLink: { async sendToken(args) { await sendPasswordResetEmail(args.token, args.identity) } },
-  sessionData: `id name email role { id name ${permissionNames.join(' ')} }`,
+  initFirstItem: { fields: ['name', 'phone', 'password'] },
+  // A forgotten PIN is reset by an owner. Do not email the phone number.
+  passwordResetLink: { async sendToken() {} },
+  sessionData: `id name email phone role { id name ${permissionNames.join(' ')} }`,
 })
 
 function optionalEnv(name: string): string | undefined {

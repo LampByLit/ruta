@@ -17,16 +17,16 @@ import { Logo } from "@/features/dashboard/components/Logo";
 type ActionState = {
   message: string | null;
   formData: {
-    email: string;
-
+    phone: string;
+    country: string;
   };
 };
 
 const initialState: ActionState = {
   message: null,
   formData: {
-    email: "",
-
+    phone: "",
+    country: "US",
   },
 };
 
@@ -73,39 +73,33 @@ export function SignUpForm() {
 
         <form action={formAction} className="mt-8 space-y-4">
           <div>
-            <Label
-              htmlFor="email"
-              className="text-sm font-medium text-foreground dark:text-foreground"
-            >
-              Email
-            </Label>
-            <Input
-              type="email"
-              id="email"
-              name="email"
-              autoComplete="email"
-              placeholder="you@example.com"
-              className="mt-2 bg-muted/40"
-              defaultValue={state.formData.email}
-              required
-            />
+            <Label htmlFor="name" className="text-sm font-medium text-foreground">Name</Label>
+            <Input id="name" name="name" autoComplete="name" required className="mt-2 bg-muted/40" />
           </div>
           <div>
-            <Label
-              htmlFor="password"
-              className="text-sm font-medium text-foreground dark:text-foreground"
-            >
-              Password
-            </Label>
+            <Label htmlFor="country" className="text-sm font-medium text-foreground">Country</Label>
+            <select id="country" name="country" defaultValue={state.formData.country || "US"} className="mt-2 flex h-9 w-full rounded-md border border-input bg-muted/40 px-3 text-sm">
+              <option value="US">United States or Canada</option>
+              <option value="PE">Peru</option>
+            </select>
+          </div>
+          <div>
+            <Label htmlFor="phone" className="text-sm font-medium text-foreground">Phone</Label>
+            <Input id="phone" name="phone" type="tel" inputMode="tel" autoComplete="tel" required placeholder="415 555 2671" defaultValue={state.formData.phone} className="mt-2 bg-muted/40" />
+          </div>
+          <div>
+            <Label htmlFor="pin" className="text-sm font-medium text-foreground">PIN</Label>
             <div className="relative mt-2">
               <Input
                 type={showPassword ? "text" : "password"}
-                id="password"
-                name="password"
+                id="pin"
+                name="pin"
                 autoComplete="new-password"
-                placeholder="••••••••"
+                inputMode="numeric"
+                pattern="[0-9]{6}"
+                maxLength={6}
+                placeholder="6 digits"
                 className="pr-10 bg-muted/40"
-
                 required
               />
               <button

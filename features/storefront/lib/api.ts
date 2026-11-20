@@ -58,9 +58,9 @@ export type TripView = {
 }
 export const TRIP_FIELDS = 'id requestId confirmationCode status scheduledFor pickupLabel dropoffLabel completedAt cancelledAt bookingSnapshot finalFareSnapshot driver { publicName photoUrl rating ratingCount } fleetBrand'
 
-export type Identity = { id: string; name: string; email: string } | null
+export type Identity = { id: string; name: string; email: string | null; phone: string | null } | null
 export async function whoAmI(signal?: AbortSignal): Promise<Identity> {
-  const data = await gql<{ authenticatedItem: Identity }>('query RiderWho { authenticatedItem { ... on User { id name email } } }', {}, { signal })
+  const data = await gql<{ authenticatedItem: Identity }>('query RiderWho { authenticatedItem { ... on User { id name email phone } } }', {}, { signal })
   return data.authenticatedItem?.id ? data.authenticatedItem : null
 }
 

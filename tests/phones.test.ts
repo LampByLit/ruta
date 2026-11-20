@@ -1,6 +1,7 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { toE164 } from '../features/phones/parse'
+import { isLoginPhone, toE164 } from '../features/phones/parse'
+import { nextPinState, PIN_ATTEMPTS } from '../features/keystone/domain/pinGate'
 
 test('US and Canada numbers become +1', () => {
   assert.equal(toE164('(415) 555-2671', 'US'), '+14155552671')
@@ -21,4 +22,18 @@ test('Peru mobiles become +51', () => {
 
 test('a Peru landline is not accepted as a mobile', () => {
   assert.equal(toE164('01 1234567', 'PE'), null)
+  assert.equal(isLoginPhone('+51987654321'), true)
+  assert.equal(isLoginPhone('+14155552671'), true)
+  assert.equal(isLoginPhone('4155552671'), false)
+})
+
+test('the fifth wrong PIN locks the number', () => {
+  let failures = 0
+  let locked: Date | null = null
+  for (let i = 0; i < PIN_ATTEMPTS - 1; i++) ({ pinFailures: failures, pinLockedUntil: locked } = nextPinState(failures, false, 1_000))
+  assert.equal(locked, null)
+  const blocked = nextPinState(failures, false, 1_000)
+  assert.equal(blocked.pinFailures, 0)
+  assert.equal(blocked.pinLockedUntil?.getTime(), 1_000 + 15 * 60 * 1000)
+  assert.deepEqual(nextPinState(3, true), { pinFailures: 0, pinLockedUntil: null })
 })

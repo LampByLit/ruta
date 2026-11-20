@@ -542,11 +542,11 @@ function stripeWebhookSecret() {
 function verifyStripeSignature(rawBody, header, secret2, now = Date.now(), toleranceSeconds = 300) {
   if (!header || !secret2) return false;
   const parts = header.split(",").map((part) => part.trim().split("="));
-  const timestamp9 = parts.find(([key]) => key === "t")?.[1];
+  const timestamp10 = parts.find(([key]) => key === "t")?.[1];
   const signatures = parts.filter(([key]) => key === "v1").map(([, value]) => value).filter(Boolean);
-  if (!timestamp9 || !/^\d{9,12}$/.test(timestamp9) || !signatures.length) return false;
-  if (Math.abs(now / 1e3 - Number(timestamp9)) > toleranceSeconds) return false;
-  const expected = (0, import_node_crypto6.createHmac)("sha256", secret2).update(`${timestamp9}.${rawBody}`).digest();
+  if (!timestamp10 || !/^\d{9,12}$/.test(timestamp10) || !signatures.length) return false;
+  if (Math.abs(now / 1e3 - Number(timestamp10)) > toleranceSeconds) return false;
+  const expected = (0, import_node_crypto6.createHmac)("sha256", secret2).update(`${timestamp10}.${rawBody}`).digest();
   return signatures.some((signature) => {
     if (!/^[0-9a-f]{64}$/i.test(signature)) return false;
     return (0, import_node_crypto6.timingSafeEqual)(Buffer.from(signature, "hex"), expected);
@@ -928,6 +928,29 @@ var FleetBrandingChange = (0, import_core4.list)({
 var import_core5 = require("@keystone-6/core");
 var import_access4 = require("@keystone-6/core/access");
 var import_fields6 = require("@keystone-6/core/fields");
+
+// features/phones/parse.ts
+function toE164(input, country) {
+  const digits = input.replace(/\D/g, "");
+  return country === "PE" ? peruMobile(digits) : nanp(digits);
+}
+function nanp(digits) {
+  const national = digits.length === 11 && digits.startsWith("1") ? digits.slice(1) : digits;
+  if (!/^[2-9]\d{2}[2-9]\d{6}$/.test(national)) return null;
+  return `+1${national}`;
+}
+function isLoginPhone(value) {
+  return /^\+1[2-9]\d{2}[2-9]\d{6}$/.test(value) || /^\+519\d{8}$/.test(value);
+}
+function peruMobile(digits) {
+  let national = digits;
+  if (national.startsWith("51") && national.length === 11) national = national.slice(2);
+  national = national.replace(/^0+/, "");
+  if (!/^9\d{8}$/.test(national)) return null;
+  return `+51${national}`;
+}
+
+// features/keystone/models/User.ts
 init_access();
 
 // features/keystone/domain/riderAccounts.ts
@@ -952,9 +975,15 @@ var User = (0, import_core5.list)({
   ui: { listView: { initialColumns: ["name", "email", "role", "onboardingStatus"] } },
   hooks: {
     resolveInput: async ({ operation, resolvedData, context }) => {
-      if (operation !== "create" || resolvedData.role) return resolvedData;
+      const data = { ...resolvedData };
+      if (data.email === "") data.email = null;
+      if (data.phone === "") data.phone = null;
+      if (operation !== "create" || data.role) return data;
       const roleId = await firstUserAdminRole(context);
-      return roleId ? { ...resolvedData, role: { connect: { id: roleId } } } : resolvedData;
+      return roleId ? { ...data, role: { connect: { id: roleId } } } : data;
+    },
+    validateInput: ({ operation, resolvedData, addValidationError }) => {
+      if (operation === "create" && !resolvedData.phone) addValidationError("A phone number is required.");
     }
   },
   access: {
@@ -963,9 +992,27 @@ var User = (0, import_core5.list)({
   },
   fields: {
     name: (0, import_fields6.text)({ validation: { isRequired: true } }),
-    email: (0, import_fields6.text)({ validation: { isRequired: true }, isIndexed: "unique" }),
-    password: (0, import_fields6.password)({ validation: { isRequired: true, length: { min: 10 } }, isFilterable: false, isOrderable: false, access: { read: import_access4.denyAll } }),
-    phone: (0, import_fields6.text)({ isFilterable: permissions.canManagePeople, isOrderable: permissions.canManagePeople, access: { read: selfField, update: selfField } }),
+    email: (0, import_fields6.text)({ isIndexed: "unique", db: { isNullable: true } }),
+    password: (0, import_fields6.password)({
+      validation: { isRequired: true, length: { min: 6, max: 6 }, rejectCommon: false, match: { regex: /^\d{6}$/, explanation: "Use a 6-digit PIN." } },
+      isFilterable: false,
+      isOrderable: false,
+      access: { read: import_access4.denyAll }
+    }),
+    phone: (0, import_fields6.text)({
+      isIndexed: "unique",
+      db: { isNullable: true },
+      isFilterable: permissions.canManagePeople,
+      isOrderable: permissions.canManagePeople,
+      access: { read: selfField, update: selfField },
+      hooks: { validateInput: ({ resolvedData, addValidationError }) => {
+        const value = resolvedData.phone;
+        if (value == null || value === "") return;
+        if (!isLoginPhone(String(value))) addValidationError("Use a US, Canada, or Peru mobile number.");
+      } }
+    }),
+    pinFailures: (0, import_fields6.integer)({ defaultValue: 0, access: { read: () => false, create: () => false, update: () => false } }),
+    pinLockedUntil: (0, import_fields6.timestamp)({ access: { read: () => false, create: () => false, update: () => false } }),
     role: (0, import_fields6.relationship)({ ...relationFilter("Role"), ref: "Role.assignedTo", access: { create: permissions.canManageRoles, update: permissions.canManageRoles } }),
     onboardingStatus: (0, import_fields6.select)({ options: [
       { label: "Not started", value: "not_started" },
@@ -3578,8 +3625,8 @@ ${emailButton("View your rides", mail.link)}`
 async function sendTripReceiptEmail(mail) {
   try {
     const port = Number(process.env.SMTP_PORT);
-    const { createTransport: createTransport3 } = await import("nodemailer");
-    const info = await createTransport3({ host: process.env.SMTP_HOST, port, auth: { user: process.env.SMTP_USER, pass: process.env.SMTP_PASSWORD } }).sendMail({
+    const { createTransport: createTransport2 } = await import("nodemailer");
+    const info = await createTransport2({ host: process.env.SMTP_HOST, port, auth: { user: process.env.SMTP_USER, pass: process.env.SMTP_PASSWORD } }).sendMail({
       to: mail.to,
       from: process.env.SMTP_FROM,
       subject: `Your ${mail.fleetName} receipt \xB7 ${mail.confirmationCode}`,
@@ -5983,6 +6030,34 @@ async function setDriverOnline(_root, args, context) {
   });
 }
 
+// features/keystone/domain/pinGate.ts
+var PIN_ATTEMPTS = 5;
+var PIN_LOCK_MS = 15 * 60 * 1e3;
+function nextPinState(failures, success, now = Date.now()) {
+  if (success) return { pinFailures: 0, pinLockedUntil: null };
+  const fails = failures + 1;
+  if (fails >= PIN_ATTEMPTS) return { pinFailures: 0, pinLockedUntil: new Date(now + PIN_LOCK_MS) };
+  return { pinFailures: fails, pinLockedUntil: null };
+}
+function canonicalPhone(input, country) {
+  const trimmed = input.trim();
+  const fromPrefix = trimmed.startsWith("+51") ? "PE" : trimmed.startsWith("+1") ? "US" : null;
+  const chosen = fromPrefix || country;
+  if (!chosen) return null;
+  const phone = toE164(trimmed, chosen);
+  return phone && isLoginPhone(phone) ? phone : null;
+}
+async function pinLocked(prisma, phone, now = Date.now()) {
+  const user = await prisma.user.findUnique({ where: { phone }, select: { pinLockedUntil: true } });
+  return Boolean(user?.pinLockedUntil && user.pinLockedUntil.getTime() > now);
+}
+async function recordPinAttempt(prisma, phone, success, now = Date.now()) {
+  const user = await prisma.user.findUnique({ where: { phone }, select: { id: true, pinFailures: true } });
+  if (!user) return;
+  const next = nextPinState(user.pinFailures || 0, success, now);
+  await prisma.user.update({ where: { id: user.id }, data: next });
+}
+
 // features/keystone/mutations/index.ts
 var graphql2 = String.raw;
 var typeDefs = graphql2`
@@ -6106,7 +6181,7 @@ var typeDefs = graphql2`
     }
   `;
 function extendGraphqlSchema(baseSchema) {
-  return (0, import_schema.mergeSchemas)({ schemas: [baseSchema], typeDefs, resolvers: {
+  const merged = (0, import_schema.mergeSchemas)({ schemas: [baseSchema], typeDefs, resolvers: {
     ...dateTimeFieldResolvers(typeDefs),
     Query: {
       redirectToInit: redirectToInit_default,
@@ -6141,49 +6216,21 @@ function extendGraphqlSchema(baseSchema) {
     },
     Mutation: { createOperatorRide, startTripCardPayment, confirmTripCardPayment, startRiderCardSetup, confirmRiderCardSetup, removeRiderCard, retryTripCharge, reportDriverLocation, addFleetMember, updateFleetMember, addDriverTimeOff, removeDriverTimeOff, triageSafetyIncident: updateSafetyIncident, triageSupportCase: updateSupportCase, moderateReview, confirmManualPayment, confirmManualRefund, setupFleet: createFleet, addFleetDriver, addFleetVehicle, assignVehicleDrivers, addComplianceDocument, reviewComplianceDocument, reviewDriver, reviewVehicle, setDriverAvailability, setDriverOnline: autoDispatchAfter(setDriverOnline, "online"), setupServiceArea: createServiceArea, setupRideService: createRideService, setupFareRule: createFareRule, saveFleetBranding, marketplaceRideshareQuote, requestRide: autoDispatchAfter(requestRide, "request"), resolveRideRequestIntent, offerRideToDriver, respondToRideOffer: autoDispatchAfter(respondToRideOffer, "response"), transitionTrip: receiptAfterTransition(chargeAfterTransition(transitionTrip)), cancelRideRequest, cancelRide: chargeAfterCancel(cancelRide), recordTripLocation, submitTripReview, reportSafetyIncident, openSupportCase, sendTripMessage, initiateTripPayment, requestTripRefund, bootstrapRideshare, dismissRideshareOnboarding, refreshRideshareClocks, expireRideOffers, expireRequestFleetOffers }
   } });
-}
-
-// features/keystone/lib/mail.ts
-var import_nodemailer2 = require("nodemailer");
-init_email_layout();
-function getBaseUrlForEmails() {
-  if (process.env.SMTP_STORE_LINK) {
-    return process.env.SMTP_STORE_LINK;
+  const authenticate = merged.getMutationType()?.getFields().authenticateUserWithPassword;
+  if (authenticate?.resolve) {
+    const original = authenticate.resolve;
+    authenticate.resolve = async (root, args, context, info) => {
+      const phone = canonicalPhone(String(args.phone || ""));
+      const pin = String(args.password || "");
+      const failure = { code: "FAILURE", message: "Authentication failed." };
+      if (!phone || !/^\d{6}$/.test(pin)) return failure;
+      if (await pinLocked(context.prisma, phone)) return failure;
+      const result = await original(root, { ...args, phone, password: pin }, context, info);
+      await recordPinAttempt(context.prisma, phone, Boolean(result && "sessionToken" in result && result.sessionToken));
+      return result;
+    };
   }
-  console.warn("SMTP_STORE_LINK not set. Please add SMTP_STORE_LINK to your environment variables for email links to work properly.");
-  return "";
-}
-var transport2 = (0, import_nodemailer2.createTransport)({
-  // @ts-ignore
-  host: process.env.SMTP_HOST,
-  port: process.env.SMTP_PORT,
-  auth: {
-    user: process.env.SMTP_USER,
-    pass: process.env.SMTP_PASSWORD
-  }
-});
-function passwordResetEmail({ url }) {
-  return emailLayout({
-    preheader: "Use this link to choose a new password.",
-    title: "Reset your password",
-    body: `${emailParagraph("We received a request to reset the password for your account. Use the button below to choose a new one.")}
-${emailButton("Reset password", url)}
-${emailMuted("If you did not request this, you can safely ignore this email. Your password will not change.")}`
-  });
-}
-async function sendPasswordResetEmail(resetToken, to, baseUrl) {
-  const frontendUrl = baseUrl || getBaseUrlForEmails();
-  const info = await transport2.sendMail({
-    to,
-    from: process.env.SMTP_FROM,
-    subject: "Your password reset token!",
-    html: passwordResetEmail({
-      url: `${frontendUrl}/dashboard/reset?token=${resetToken}`
-    })
-  });
-  if (process.env.SMTP_USER?.includes("ethereal.email")) {
-    console.log(`\u{1F4E7} Message Sent!  Preview it at ${(0, import_nodemailer2.getTestMessageUrl)(info)}`);
-  }
+  return merged;
 }
 
 // features/keystone/index.ts
@@ -6283,14 +6330,14 @@ if (production && !building) {
 var session = (0, import_session.statelessSessions)({ maxAge: 60 * 60 * 24 * 30, secret: sessionSecret });
 var { withAuth } = (0, import_auth.createAuth)({
   listKey: "User",
-  identityField: "email",
+  identityField: "phone",
   secretField: "password",
   // The first user's Admin role is assigned by the User resolveInput hook (see models/User.ts).
-  initFirstItem: { fields: ["name", "email", "password"] },
-  passwordResetLink: { async sendToken(args) {
-    await sendPasswordResetEmail(args.token, args.identity);
+  initFirstItem: { fields: ["name", "phone", "password"] },
+  // A forgotten PIN is reset by an owner. Do not email the phone number.
+  passwordResetLink: { async sendToken() {
   } },
-  sessionData: `id name email role { id name ${permissionNames.join(" ")} }`
+  sessionData: `id name email phone role { id name ${permissionNames.join(" ")} }`
 });
 function optionalEnv(name) {
   const value = process.env[name];

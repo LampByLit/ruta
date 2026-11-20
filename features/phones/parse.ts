@@ -12,6 +12,20 @@ function nanp(digits: string): string | null {
   return `+1${national}`
 }
 
+export function isLoginPhone(value: string): boolean {
+  return /^\+1[2-9]\d{2}[2-9]\d{6}$/.test(value) || /^\+519\d{8}$/.test(value)
+}
+
+/** The value stored on User.phone. A leading +1 or +51 selects the country when the form did not. */
+export function canonicalPhone(input: string, country?: PhoneCountry | null): string | null {
+  const trimmed = input.trim()
+  const fromPrefix: PhoneCountry | null = trimmed.startsWith('+51') ? 'PE' : trimmed.startsWith('+1') ? 'US' : null
+  const chosen = fromPrefix || country
+  if (!chosen) return null
+  const phone = toE164(trimmed, chosen)
+  return phone && isLoginPhone(phone) ? phone : null
+}
+
 /** Peru mobile: 9 digits starting with 9. A leading 51 or a trunk 0 is stripped. */
 function peruMobile(digits: string): string | null {
   let national = digits

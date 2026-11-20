@@ -21,7 +21,7 @@ async function seed() {
   const role = (name: string, grants: Record<string, boolean> = {}) => db.role.create({ data: { name, ...grants } })
   const admin = await role('FltAdmin', { canAccessDashboard: true, canManagePeople: true, canManageRoles: true, canManageFleet: true, canDispatchRides: true, canManageDrivers: true, canManageFinance: true, canManageSafety: true, canManageIntegrations: true, canManageOnboarding: true })
   const plain = await role('FltPlain')
-  const mk = (key: string, name: string, email: string, r: any, phone = '') => db.user.create({ data: { name, email, phone, password: 'x'.repeat(12), role: { connect: { id: r.id } } } }).then((u: any) => (ids[key] = u.id, u))
+  const mk = (key: string, name: string, email: string, r: any, phone: string | null = null) => db.user.create({ data: { name, email, phone, password: 'x'.repeat(12), role: { connect: { id: r.id } } } }).then((u: any) => (ids[key] = u.id, u))
   await mk('admin', 'Alice Admin', 'alice.admin@example.com', admin, '5550001')
   const dispatcher = await mk('dispatcher', 'Maya Dispatch', 'maya@example.com', plain)
   const finance = await mk('finance', 'Dan Finance', 'dan@example.com', plain)

@@ -1,5 +1,6 @@
-# Railway can't access internal databases during build, so we move
-# npm run migrate from build to start command
+# Railway can't access internal databases during the image build, and the
+# build does not need DATABASE_URL, SESSION_SECRET, or S3. Set those on the
+# app service for runtime. Migrate on boot.
 [build]
 buildCommand = "keystone build --no-ui && next build"
 

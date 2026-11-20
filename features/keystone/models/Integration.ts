@@ -21,7 +21,7 @@ export const MarketplaceRegistration = list({
   access: lockedFleetAccess('fleetAdmin'),
   fields: {
     label: labels.marketplaceRegistration,
-    fleet: relationship({ ...relationFilter('Fleet'), ref: 'Fleet.marketplaceRegistration', access: { create: () => false, update: () => false } }), sourceId: text({ validation: { isRequired: true }, isIndexed: 'unique' }), platform: text({ defaultValue: 'openfront-rideshare' }),
+    fleet: relationship({ ...relationFilter('Fleet'), ref: 'Fleet.marketplaceRegistration', access: { create: () => false, update: () => false } }), sourceId: text({ validation: { isRequired: true }, isIndexed: 'unique' }), platform: text({ defaultValue: 'ruta' }),
     status: select({ options: ['draft', 'active', 'paused', 'revoked'].map(value => ({ label: value, value })), defaultValue: 'draft' }), manifestVersion: text({ defaultValue: '1' }), publicBaseUrl: text(),
     capabilities: json({ defaultValue: ['marketplace.discovery', 'rideshare.quote', 'rideshare.request', 'rideshare.trip.view'] }), lastVerifiedAt: timestamp(), verificationEvidence: json({ defaultValue: {} }), ...trackingFields,
   },

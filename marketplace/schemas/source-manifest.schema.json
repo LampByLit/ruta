@@ -1,11 +1,11 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "openfront.marketplace.source/v1",
+  "$id": "ruta.marketplace.source/v1",
   "type": "object",
   "required": ["schemaVersion", "platform", "verticals", "transport", "discovery", "actions", "controlBoundary"],
   "properties": {
-    "schemaVersion": { "const": "openfront.marketplace.source/v1" },
-    "platform": { "const": "openfront-rideshare" },
+    "schemaVersion": { "const": "ruta.marketplace.source/v1" },
+    "platform": { "const": "ruta" },
     "verticals": { "type": "array", "contains": { "const": "rideshare" } },
     "transport": { "type": "object", "required": ["graphqlPath"] },
     "discovery": { "type": "object", "required": ["capability", "vertical", "resultKind", "extensionSchema", "query"] },

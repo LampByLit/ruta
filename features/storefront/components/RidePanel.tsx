@@ -285,7 +285,7 @@ function RateRide({ tripId, signedIn, driverName }: { tripId: string; signedIn: 
 
 /** Uber's cancel confirmation: what it costs, then "Keep ride" or "Cancel ride". */
 type RequestIntent = { v: 1; requestId: string; requestProof: string | null; actorId: string; key: string; phase: 'pending' | 'resolved' }
-const cancelKey = (id: string) => `openfront-rideshare-request-cancel-v1:${id}`
+const cancelKey = (id: string) => `ruta-request-cancel-v1:${id}`
 function CancelConfirm({ requestId, proof, tripId, requestCancellable, onClose, onCancelled }: { requestId: string; proof: string | null; tripId: string | null; requestCancellable: boolean; onClose: () => void; onCancelled: () => void }) {
   const [preview, setPreview] = useState<{ kind: 'request'; actorId: string } | { kind: 'trip'; actorId: string; acceptedOfferId: string; updatedAt: string; feeMinor: number; currencyCode: string } | null>(null)
   const [state, setState] = useState<'loading' | 'ready' | 'sending' | 'failed' | 'unavailable'>('loading')

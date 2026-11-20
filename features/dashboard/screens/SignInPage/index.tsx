@@ -36,14 +36,8 @@ export async function SignInPage({ searchParams }: SignInPageProps) {
           </p>
         )}
         <SignInForm from={from} />
-        <p className="mt-6 text-sm text-muted-foreground dark:text-muted-foreground">
-          Forgot your password?
-          <Link
-            href="/dashboard/reset"
-            className="ml-1 font-medium text-primary hover:text-primary/90 dark:text-primary hover:dark:text-primary/90"
-          >
-            Reset password
-          </Link>
+        <p className="mt-6 text-sm text-muted-foreground">
+          A forgotten PIN is reset by the owner.
         </p>
       </div>
     </main>

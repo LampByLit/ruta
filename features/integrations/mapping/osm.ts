@@ -13,7 +13,7 @@ export type RoutedPath = { distanceMeters: number; durationSeconds: number; coor
 
 import { formatPlace } from './address'
 
-const USER_AGENT = 'openfront-rideshare/1.0 (+https://github.com/openshiporg/openfront-rideshare)'
+const USER_AGENT = 'Ruta/1.0 (+https://github.com/LampByLit/ruta)'
 const photonBase = () => (process.env.PHOTON_URL || 'https://photon.komoot.io').replace(/\/+$/, '')
 const osrmBase = () => (process.env.OSRM_URL || 'https://router.project-osrm.org').replace(/\/+$/, '')
 

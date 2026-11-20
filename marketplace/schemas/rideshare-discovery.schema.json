@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "openfront.rideshare.discovery-criteria/v1",
+  "$id": "ruta.rideshare.discovery-criteria/v1",
   "type": "object",
   "additionalProperties": false,
   "properties": {

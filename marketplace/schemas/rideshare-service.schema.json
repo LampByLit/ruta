@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "openfront.rideshare.service/v1",
+  "$id": "ruta.rideshare.service/v1",
   "type": "object",
   "additionalProperties": false,
   "required": ["category", "passengerCapacity", "wheelchairAccessible", "serviceAreas"],

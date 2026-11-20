@@ -1,10 +1,10 @@
 {
   "$schema": "./schemas/source-manifest.schema.json",
-  "schemaVersion": "openfront.marketplace.source/v1",
-  "platform": "openfront-rideshare",
+  "schemaVersion": "ruta.marketplace.source/v1",
+  "platform": "ruta",
   "verticals": ["rideshare"],
   "sourceIdentity": {
-    "idEnvironmentVariable": "OPENFRONT_MARKETPLACE_SOURCE_ID",
+    "idEnvironmentVariable": "RUTA_MARKETPLACE_SOURCE_ID",
     "baseUrlEnvironmentVariable": "PUBLIC_BASE_URL",
     "ownership": "source-deployment"
   },
@@ -13,7 +13,7 @@
     "capability": { "id": "marketplace.discovery", "version": 1 },
     "vertical": "rideshare",
     "resultKind": "rideshare.service",
-    "extensionSchema": "openfront.rideshare.service/v1",
+    "extensionSchema": "ruta.rideshare.service/v1",
     "query": "marketplaceRideshareServices",
     "criteriaSchema": "./schemas/rideshare-discovery.schema.json",
     "publicFieldsOnly": true

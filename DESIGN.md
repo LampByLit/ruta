@@ -1,5 +1,5 @@
 ---
-name: Openfront Rideshare
+name: Ruta
 description: Self-hostable ride booking and fleet operations; operator pages set like a licence plate, rider pages like a meter slip on the kerb.
 colors:
   cab-yellow: "oklch(0.86 0.165 92)"
@@ -141,7 +141,7 @@ components:
     height: "48px"
 ---
 
-# Design System: Openfront Rideshare
+# Design System: Ruta
 
 ## Overview
 

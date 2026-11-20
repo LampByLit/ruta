@@ -17,7 +17,7 @@ const production = process.env.NODE_ENV === 'production'
 // to compile. Next's page-data workers do not keep "build" in process.argv, so
 // also treat NEXT_PHASE=phase-production-build as a build. The running server still requires the secrets.
 const building = process.argv.includes('build') || process.env.NEXT_PHASE === 'phase-production-build'
-const databaseURL = process.env.DATABASE_URL || 'postgresql://localhost/openfront_rideshare'
+const databaseURL = process.env.DATABASE_URL || 'postgresql://localhost/ruta'
 const sessionSecret = process.env.SESSION_SECRET || 'development-only-session-secret-change-me-now'
 if (production && !building) {
   const missing: string[] = []

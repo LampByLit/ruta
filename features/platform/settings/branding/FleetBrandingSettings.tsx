@@ -66,7 +66,7 @@ export function FleetBrandingSettings() {
       const row = data.fleetBranding
       if (row?.fleetId !== id || typeof row.logoIcon !== 'string' || typeof row.logoColor !== 'string' || !Number.isFinite(Date.parse(row.updatedAt))) throw new Error()
       if (current === generation.current) {
-        const stored = sessionStorage.getItem(`openfront-rideshare-branding-command-v1:${row.actorId}:${id}`)
+        const stored = sessionStorage.getItem(`ruta-branding-command-v1:${row.actorId}:${id}`)
         const original = stored ? JSON.parse(stored) : null
         if (original && (original.fleetId !== id || original.expectedActorId !== row.actorId || typeof original.idempotencyKey !== 'string')) throw new Error()
         originalRef.current = original
@@ -81,7 +81,7 @@ export function FleetBrandingSettings() {
     flight.current = true; setBusy(true); setError(''); setMessage('')
     const original = originalRef.current || { fleetId: saved.fleetId, expectedUpdatedAt: saved.updatedAt, name: name.trim(), logoIcon, logoColor: normalizeStoreLogoColor(logoColor), expectedActorId: saved.actorId, idempotencyKey: crypto.randomUUID() }
     try {
-      const key = `openfront-rideshare-branding-command-v1:${saved.actorId}:${saved.fleetId}`
+      const key = `ruta-branding-command-v1:${saved.actorId}:${saved.fleetId}`
       const serialized = JSON.stringify(original)
       sessionStorage.setItem(key, serialized)
       if (sessionStorage.getItem(key) !== serialized) throw new Error()

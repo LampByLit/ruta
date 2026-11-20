@@ -1,9 +1,9 @@
 import type { QuoteBinding } from './quoteBinding'
 import { isQuoteResponse } from './quoteResponse'
 
-export const receiptStorageKey = 'openfront-rideshare-receipt-v1'
-export const pendingRequestStorageKey = 'openfront-rideshare-pending-request-v2'
-export const archivedReceiptKey = (requestId: string) => `openfront-rideshare-receipt-history-v1:${requestId}`
+export const receiptStorageKey = 'ruta-receipt-v1'
+export const pendingRequestStorageKey = 'ruta-pending-request-v2'
+export const archivedReceiptKey = (requestId: string) => `ruta-receipt-history-v1:${requestId}`
 export type RiderReceipt = { requestId: string; requestNumber: string; requestProof: string; status: string }
 
 export function parseRiderReceipt(raw: string | null): RiderReceipt | null {

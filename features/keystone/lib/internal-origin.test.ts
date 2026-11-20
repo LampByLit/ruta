@@ -31,8 +31,8 @@ test('source is the end user real IP, never a shared constant', () => {
 test('signed headers are produced for a source and secret, and distinct per visitor', () => {
   const a = internalIdentityHeaders('203.0.113.7', SECRET)
   const b = internalIdentityHeaders('203.0.113.8', SECRET)
-  assert.deepEqual(Object.keys(a).sort(), ['x-openfront-client-identity', 'x-openfront-client-signature', 'x-openfront-client-timestamp'])
-  assert.notEqual(a['x-openfront-client-identity'], b['x-openfront-client-identity'])
+  assert.deepEqual(Object.keys(a).sort(), ['x-ruta-client-identity', 'x-ruta-client-signature', 'x-ruta-client-timestamp'])
+  assert.notEqual(a['x-ruta-client-identity'], b['x-ruta-client-identity'])
 })
 
 test('short secret, missing secret or missing source sends unsigned and never throws', () => {
@@ -46,9 +46,9 @@ function signedHeaders(now: number, source = '203.0.113.7', secret = SECRET) {
   return {
     signed,
     headers: {
-      'x-openfront-client-identity': signed.identity,
-      'x-openfront-client-timestamp': signed.timestamp,
-      'x-openfront-client-signature': signed.signature,
+      'x-ruta-client-identity': signed.identity,
+      'x-ruta-client-timestamp': signed.timestamp,
+      'x-ruta-client-signature': signed.signature,
     } as Record<string, string>,
   }
 }
@@ -99,12 +99,12 @@ test('SECURITY (d) a bad signature, or a tampered identity or timestamp, is igno
   const now = Date.now()
   const { headers } = signedHeaders(now)
   const ok = (h: Record<string, string>) => !requestIdentity(h, '127.0.0.1', SECRET, now).startsWith('forwarded:')
-  assert.ok(ok({ ...headers, 'x-openfront-client-signature': 'b'.repeat(64) }))
-  assert.ok(ok({ ...headers, 'x-openfront-client-identity': 'c'.repeat(64) }))
-  assert.ok(ok({ ...headers, 'x-openfront-client-timestamp': String(Math.floor(now / 1000) + 1) }))
-  assert.ok(ok({ ...headers, 'x-openfront-client-signature': 'nothex' }))
+  assert.ok(ok({ ...headers, 'x-ruta-client-signature': 'b'.repeat(64) }))
+  assert.ok(ok({ ...headers, 'x-ruta-client-identity': 'c'.repeat(64) }))
+  assert.ok(ok({ ...headers, 'x-ruta-client-timestamp': String(Math.floor(now / 1000) + 1) }))
+  assert.ok(ok({ ...headers, 'x-ruta-client-signature': 'nothex' }))
   assert.ok(ok({}))
-  assert.ok(ok({ ...headers, 'x-openfront-client-signature': signedHeaders(now, '203.0.113.7', 'z'.repeat(40)).signed.signature }))
+  assert.ok(ok({ ...headers, 'x-ruta-client-signature': signedHeaders(now, '203.0.113.7', 'z'.repeat(40)).signed.signature }))
 })
 
 test('SECURITY (e) a secret shorter than 32 characters is ignored and cannot sign', () => {
@@ -119,7 +119,7 @@ test('SECURITY (e) a secret shorter than 32 characters is ignored and cannot sig
   const identity = createHash('sha256').update('203.0.113.7').digest('hex')
   const timestamp = String(Math.floor(now / 1000))
   const signature = createHmac('sha256', short).update(`${timestamp}:${identity}`).digest('hex')
-  const forged = { 'x-openfront-client-identity': identity, 'x-openfront-client-timestamp': timestamp, 'x-openfront-client-signature': signature }
+  const forged = { 'x-ruta-client-identity': identity, 'x-ruta-client-timestamp': timestamp, 'x-ruta-client-signature': signature }
   assert.ok(!requestIdentity(forged, '127.0.0.1', short, now).startsWith('forwarded:'))
 })
 
@@ -136,12 +136,12 @@ test('internal fetch signs each server request and refuses other targets', async
     const f = createInternalGraphqlFetch('203.0.113.7', 'http://127.0.0.1:4321/api/graphql')
     await f('http://127.0.0.1:4321/api/graphql', { method: 'POST', headers: { cookie: 'keystonejs-session=x' } })
     assert.equal(seen?.get('cookie'), 'keystonejs-session=x')
-    assert.match(seen?.get('x-openfront-client-identity') || '', /^[a-f0-9]{64}$/)
+    assert.match(seen?.get('x-ruta-client-identity') || '', /^[a-f0-9]{64}$/)
     await assert.rejects(() => f('https://evil.example/api/graphql', {}), /loopback GraphQL endpoint/)
     await assert.rejects(() => f('http://127.0.0.1:4321/other', {}), /loopback GraphQL endpoint/)
     process.env.SESSION_SECRET = 'short'
     await f('http://127.0.0.1:4321/api/graphql', {})
-    assert.equal(seen?.get('x-openfront-client-identity'), null)
+    assert.equal(seen?.get('x-ruta-client-identity'), null)
   } finally {
     globalThis.fetch = original
     if (prev === undefined) delete process.env.SESSION_SECRET
@@ -180,9 +180,9 @@ test('two visitors get two different signed identities through the server target
     await b.fetch!(b.endpoint)
     await a.fetch!(a.endpoint)
     assert.equal(seen.length, 3)
-    assert.notEqual(seen[0]['x-openfront-client-identity'], seen[1]['x-openfront-client-identity'])
-    assert.equal(seen[0]['x-openfront-client-identity'], seen[2]['x-openfront-client-identity'])
-    assert.ok(seen[1]['x-openfront-client-signature'])
+    assert.notEqual(seen[0]['x-ruta-client-identity'], seen[1]['x-ruta-client-identity'])
+    assert.equal(seen[0]['x-ruta-client-identity'], seen[2]['x-ruta-client-identity'])
+    assert.ok(seen[1]['x-ruta-client-signature'])
   } finally {
     globalThis.fetch = prev.fetch
     if (prev.port === undefined) delete process.env.PORT; else process.env.PORT = prev.port

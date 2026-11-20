@@ -365,7 +365,7 @@ export function Sidebar({ adminMeta, user, onOpenDialog }: SidebarProps) {
           <OnboardingCards
             steps={[{
               href: '#onboarding',
-              title: 'Welcome to Openfront Rideshare',
+              title: 'Welcome to Ruta',
               description: 'Your fleet is empty. Click get started to create services, fares, evidence policies, and a first driver.',
             }]}
             onboardingStatus={user?.onboardingStatus}

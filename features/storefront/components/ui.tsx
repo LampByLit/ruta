@@ -7,7 +7,7 @@ const cx = (...parts: Array<string | false | null | undefined>) => parts.filter(
 
 type Tone = 'primary' | 'secondary' | 'danger' | 'plain'
 const tones: Record<Tone, string> = {
-  primary: 'bg-tide text-white hover:bg-tide-deep disabled:bg-[#a9bcb8]',
+  primary: 'bg-ruta text-ink hover:bg-[#ddef00] disabled:bg-[#e4e2e6] disabled:text-ink-3',
   secondary: 'bg-white text-ink ring-1 ring-inset ring-rule hover:bg-tide-soft disabled:text-ink-3',
   danger: 'bg-white text-alert ring-1 ring-inset ring-rule hover:bg-[#fbeceb]',
   plain: 'bg-transparent text-ink hover:bg-ink/5',

@@ -27,6 +27,7 @@ import { dispatchCandidatePage } from './dispatchCandidates'
 import { addDriverTimeOff, addFleetMember, confirmManualPayment, confirmManualRefund, moderateReview, removeDriverTimeOff, updateFleetMember, updateSafetyIncident, updateSupportCase } from './fleetOperations'
 import { addComplianceDocument, addFleetDriver, addFleetVehicle, assignVehicleDrivers, createFareRule, createFleet, createRideService, createServiceArea, reviewComplianceDocument, reviewDriver, reviewVehicle, setDriverAvailability, setDriverOnline } from './fleetSetup'
 import { canonicalPhone, pinLocked, recordPinAttempt } from '../domain/pinGate'
+import { discardPhonelessAccounts } from '../domain/freshAdmin'
 
 const graphql = String.raw
 
@@ -169,6 +170,14 @@ export function extendGraphqlSchema(baseSchema: GraphQLSchema) {
     },
     Mutation: { createOperatorRide, startTripCardPayment, confirmTripCardPayment, startRiderCardSetup, confirmRiderCardSetup, removeRiderCard, retryTripCharge, reportDriverLocation, addFleetMember, updateFleetMember, addDriverTimeOff, removeDriverTimeOff, triageSafetyIncident: updateSafetyIncident, triageSupportCase: updateSupportCase, moderateReview, confirmManualPayment, confirmManualRefund, setupFleet: createFleet, addFleetDriver, addFleetVehicle, assignVehicleDrivers, addComplianceDocument, reviewComplianceDocument, reviewDriver, reviewVehicle, setDriverAvailability, setDriverOnline: autoDispatchAfter(setDriverOnline, 'online'), setupServiceArea: createServiceArea, setupRideService: createRideService, setupFareRule: createFareRule, saveFleetBranding, marketplaceRideshareQuote, requestRide: autoDispatchAfter(requestRide, 'request'), resolveRideRequestIntent, offerRideToDriver, respondToRideOffer: autoDispatchAfter(respondToRideOffer, 'response'), transitionTrip: receiptAfterTransition(chargeAfterTransition(transitionTrip)), cancelRideRequest, cancelRide: chargeAfterCancel(cancelRide), recordTripLocation, submitTripReview, reportSafetyIncident, openSupportCase, sendTripMessage, initiateTripPayment, requestTripRefund, bootstrapRideshare, dismissRideshareOnboarding, refreshRideshareClocks, expireRideOffers, expireRequestFleetOffers },
   } })
+  const createInitial = merged.getMutationType()?.getFields().createInitialUser
+  if (createInitial?.resolve) {
+    const originalInit = createInitial.resolve
+    createInitial.resolve = async (root, args, context, info) => {
+      await discardPhonelessAccounts(context.prisma)
+      return originalInit(root, args, context, info)
+    }
+  }
   const authenticate = merged.getMutationType()?.getFields().authenticateUserWithPassword
   if (authenticate?.resolve) {
     const original = authenticate.resolve

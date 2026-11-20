@@ -2,6 +2,7 @@ import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { isLoginPhone, toE164 } from '../features/phones/parse'
 import { nextPinState, PIN_ATTEMPTS } from '../features/keystone/domain/pinGate'
+import { discardPhonelessAccounts } from '../features/keystone/domain/freshAdmin'
 
 test('US and Canada numbers become +1', () => {
   assert.equal(toE164('(415) 555-2671', 'US'), '+14155552671')
@@ -36,4 +37,20 @@ test('the fifth wrong PIN locks the number', () => {
   assert.equal(blocked.pinFailures, 0)
   assert.equal(blocked.pinLockedUntil?.getTime(), 1_000 + 15 * 60 * 1000)
   assert.deepEqual(nextPinState(3, true), { pinFailures: 0, pinLockedUntil: null })
+})
+
+test('a phone account keeps the old email admin in place', async () => {
+  const removed: unknown[] = []
+  const kept = { user: {
+    count: async () => 1,
+    deleteMany: async (args: unknown) => { removed.push(args); return { count: 0 } },
+  } }
+  assert.equal(await discardPhonelessAccounts(kept), false)
+  assert.equal(removed.length, 0)
+  const open = { user: {
+    count: async () => 0,
+    deleteMany: async (args: unknown) => { removed.push(args); return { count: 1 } },
+  } }
+  assert.equal(await discardPhonelessAccounts(open), true)
+  assert.equal(removed.length, 1)
 })

@@ -6271,9 +6271,15 @@ function throwKeystonePrismaErrors(client) {
 
 // features/keystone/index.ts
 var production = process.env.NODE_ENV === "production";
+var building = process.argv.includes("build") || process.env.NEXT_PHASE === "phase-production-build";
 var databaseURL = process.env.DATABASE_URL || "postgresql://localhost/openfront_rideshare";
 var sessionSecret = process.env.SESSION_SECRET || "development-only-session-secret-change-me-now";
-if (production && (!process.env.DATABASE_URL || !process.env.SESSION_SECRET || sessionSecret.length < 32)) throw new Error("DATABASE_URL and SESSION_SECRET of at least 32 characters are required in production.");
+if (production && !building) {
+  const missing = [];
+  if (!process.env.DATABASE_URL) missing.push("DATABASE_URL");
+  if (!process.env.SESSION_SECRET || process.env.SESSION_SECRET.length < 32) missing.push("SESSION_SECRET of at least 32 characters");
+  if (missing.length) throw new Error(`${missing.join(" and ")} ${missing.length === 1 ? "is" : "are"} required in production.`);
+}
 var session = (0, import_session.statelessSessions)({ maxAge: 60 * 60 * 24 * 30, secret: sessionSecret });
 var { withAuth } = (0, import_auth.createAuth)({
   listKey: "User",
@@ -6286,23 +6292,35 @@ var { withAuth } = (0, import_auth.createAuth)({
   } },
   sessionData: `id name email role { id name ${permissionNames.join(" ")} }`
 });
-function productionEnv(name, developmentFallback) {
-  if (process.env[name]) return process.env[name];
-  if (process.env.NODE_ENV === "production") throw new Error(`${name} is required in production`);
-  return developmentFallback;
+function optionalEnv(name) {
+  const value = process.env[name];
+  return value && value.length > 0 ? value : void 0;
 }
-var s3Endpoint = productionEnv("S3_ENDPOINT", "https://sfo3.digitaloceanspaces.com");
-var storage = {
+var s3Bucket = optionalEnv("S3_BUCKET_NAME");
+var s3Endpoint = optionalEnv("S3_ENDPOINT");
+if (production && !building && s3Bucket) {
+  const missingS3 = ["S3_ENDPOINT", "S3_ACCESS_KEY_ID", "S3_SECRET_ACCESS_KEY"].filter((name) => !optionalEnv(name));
+  if (missingS3.length) throw new Error(`${missingS3.join(", ")} ${missingS3.length === 1 ? "is" : "are"} required in production when S3_BUCKET_NAME is set.`);
+}
+var storage = s3Bucket ? {
   my_images: {
     kind: "s3",
     type: "image",
-    bucketName: productionEnv("S3_BUCKET_NAME", "keystone-test"),
-    region: productionEnv("S3_REGION", "ap-southeast-2"),
-    accessKeyId: productionEnv("S3_ACCESS_KEY_ID", "keystone"),
-    secretAccessKey: productionEnv("S3_SECRET_ACCESS_KEY", "keystone"),
+    bucketName: s3Bucket,
+    region: optionalEnv("S3_REGION") || "auto",
+    accessKeyId: optionalEnv("S3_ACCESS_KEY_ID"),
+    secretAccessKey: optionalEnv("S3_SECRET_ACCESS_KEY"),
     endpoint: s3Endpoint,
     forcePathStyle: s3ForcePathStyle(s3Endpoint),
     signed: { expiry: 5e3 }
+  }
+} : {
+  my_images: {
+    kind: "local",
+    type: "image",
+    storagePath: "public/images",
+    generateUrl: (path) => `/images${path}`,
+    serverRoute: { path: "/images" }
   }
 };
 var keystone_default = withAuth((0, import_core14.config)({

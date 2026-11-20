@@ -43,7 +43,7 @@ export default function RiderRides() {
   const past = (items || []).filter(item => !upcoming.includes(item))
 
   return <RiderPage title="My rides">
-    {guest && <Link href="/" className="mb-6 flex min-h-14 items-center justify-between gap-3 rounded-[18px] bg-tide px-4 text-white">
+    {guest && <Link href="/" className="mb-6 flex min-h-14 items-center justify-between gap-3 rounded-[18px] bg-ruta px-4 text-ink">
       <span className="min-w-0 truncate text-[16px] font-semibold">Current ride · <span className="font-mono font-normal">{guest.requestNumber}</span></span><Icon.chevronRight className="size-4 shrink-0" />
     </Link>}
     {items === null || signedIn === null ? <p className="flex items-center gap-3 text-[16px]"><Spinner />Loading rides…</p>

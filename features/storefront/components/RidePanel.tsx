@@ -146,7 +146,7 @@ export function RidePanel({ requestId, receipt, identity, fleetName, onInfo, onD
         <h2 className="display text-[22px] font-bold leading-7" aria-live="polite">{headline[stage]}</h2>
         {sub[stage] && <p className="mt-1 text-[15px] text-ink-2">{sub[stage]}</p>}
       </div>
-      {stage === 'arrived' && <span className="mt-0.5 shrink-0 rounded-md bg-signal px-2 py-1 text-[14px] font-semibold text-white">Now</span>}
+      {stage === 'arrived' && <span className="mt-0.5 shrink-0 rounded-md bg-ruta px-2 py-1 text-[14px] font-semibold text-ink">Now</span>}
     </div>
     {(stage === 'finding' || stage === 'reassigning') && <div className="progress mt-4" role="progressbar" aria-label="Finding a driver"><span /></div>}
 
@@ -213,7 +213,7 @@ function declineReason(message: string | null) {
 
 const firstName = (name: string) => name.split(/\s+/)[0] || name
 function ButtonLinkPrimary({ href, children }: { href: string; children: React.ReactNode }) {
-  return <Link href={href} className="press inline-flex h-12 items-center justify-center rounded-[16px] bg-tide px-5 text-[16px] font-semibold text-white">{children}</Link>
+  return <Link href={href} className="press inline-flex h-12 items-center justify-center rounded-[16px] bg-ruta px-5 text-[16px] font-semibold text-ink">{children}</Link>
 }
 
 function ShareButton({ requestId, code }: { requestId: string; code: string | null }) {

@@ -23,7 +23,7 @@ export default function OnboardingDialog({ isOpen, onClose }: { isOpen: boolean;
     <Dialog open={isOpen} onOpenChange={open => { if (!open && !isLoading) onClose() }}>
       <DialogContent>
         <DialogHeader>
-          <DialogTitle>Set up Openfront Rideshare</DialogTitle>
+          <DialogTitle>Set up Ruta</DialogTitle>
           <DialogDescription>
             Set up your first services, fares and driver. Real operation still needs verified provider and driver documents.
           </DialogDescription>

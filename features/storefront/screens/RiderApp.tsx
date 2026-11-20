@@ -6,7 +6,8 @@ import { useRouter } from 'next/navigation'
 import { gql, QUOTE_FIELDS, SERVICE_FIELDS, whoAmI, type Estimates, type Identity, type LngLat, type Place, type Quote, type Service } from '../lib/api'
 import { cityPoint, drivingRoute, locate, placeAt, rememberPlace, useRecentPlaces, type RoutePath } from '../lib/places'
 import { clock, formatMoney, minutes } from '../lib/format'
-import { storeLogoMark, storeWordmark } from '../lib/store-mark'
+import { useI18n } from '@/features/i18n/locale'
+import { storeLogoMark } from '../lib/store-mark'
 import { vehicleArt } from '@/features/lib/vehicles'
 import { defaultServiceId, initialFlow, riderFlow } from '../domain/riderFlow'
 import { archiveReceipt, parsePendingRequest, parseRiderReceipt, pendingRequestStorageKey, persistPendingRequest, receiptFromFragment, receiptStorageKey, storedReceipt, type RiderReceipt } from '../domain/riderReceiptStorage'
@@ -28,6 +29,7 @@ type Binding = QuoteBinding<Quote>
  */
 export default function RiderApp({ initialRide, initialServiceId }: { initialRide?: { code: string; requestId?: string }; initialServiceId?: string }) {
   const router = useRouter()
+  const { t } = useI18n()
   const [flow, dispatch] = useReducer(riderFlow, initialFlow)
   const [services, setServices] = useState<Service[] | null>(null)
   const [servicesError, setServicesError] = useState(false)
@@ -251,10 +253,10 @@ export default function RiderApp({ initialRide, initialServiceId }: { initialRid
     <div className="pointer-events-none absolute inset-x-0 top-0 z-30 flex items-start justify-between gap-3 px-4 pt-[max(env(safe-area-inset-top),12px)] lg:px-6 lg:pt-5">
       <div className="pointer-events-auto">
         {phase === 'choose' || phase === 'pin'
-          ? <MapButton aria-label="Back" onClick={() => dispatch({ type: 'back' })}><Icon.back className="size-5" /></MapButton>
-          : <Link href="/" aria-label={fleetName} className="press flex h-11 max-w-[60vw] items-center gap-2 rounded-[14px] bg-white pl-2.5 pr-3.5 shadow-[0_1px_0_rgba(16,35,31,0.06),0_6px_16px_-6px_rgba(16,35,31,0.35)] outline-none focus-visible:ring-2 focus-visible:ring-tide">
-            <img alt="" src={`data:image/svg+xml,${encodeURIComponent(storeLogoMark(fleet?.logoIcon))}`} style={{ filter: `hue-rotate(${Number(fleet?.logoColor) || 0}deg)` }} className="h-7 w-6 shrink-0 object-contain" />
-            <span className="display truncate text-[19px] font-bold leading-none">{storeWordmark(fleetName)}</span>
+          ? <MapButton aria-label={t('nav.back')} onClick={() => dispatch({ type: 'back' })}><Icon.back className="size-5" /></MapButton>
+          : <Link href="/" aria-label="Ruta" className="press flex h-11 max-w-[60vw] items-center gap-2 rounded-[14px] bg-white pl-2.5 pr-3.5 shadow-[0_1px_0_rgba(71,64,74,0.06),0_6px_16px_-6px_rgba(71,64,74,0.35)] outline-none focus-visible:ring-2 focus-visible:ring-tide">
+            <img alt="" src={`data:image/svg+xml,${encodeURIComponent(storeLogoMark(fleet?.logoIcon))}`} className="h-7 w-6 shrink-0 object-contain" />
+            <span className="display truncate text-[19px] font-bold leading-none">Ruta</span>
           </Link>}
       </div>
       <div className="pointer-events-auto"><RiderMenu identity={identity} fleetName={fleetName} /></div>
@@ -265,27 +267,27 @@ export default function RiderApp({ initialRide, initialServiceId }: { initialRid
       onSetOnMap={field => dispatch({ type: 'setOnMap', field })} onBack={() => dispatch({ type: 'back' })} onUseLocation={() => { void findMe(true) }} locating={locating} />}
 
     {whenOpen && phase !== 'ride' && <div className="fixed inset-0 z-50 flex items-end bg-ink/40 fade-in lg:items-center lg:justify-center" onPointerDown={event => { if (event.target === event.currentTarget) setWhenOpen(false) }}>
-      <div role="dialog" aria-modal="true" aria-label="Schedule a pickup" className="sheet-in w-full rounded-t-[28px] bg-paper pb-[max(env(safe-area-inset-bottom),12px)] pt-4 lg:max-w-[460px] lg:rounded-[28px]">
+      <div role="dialog" aria-modal="true" aria-label={t('when.schedulePickup')} className="sheet-in w-full rounded-t-[28px] bg-paper pb-[max(env(safe-area-inset-bottom),12px)] pt-4 lg:max-w-[460px] lg:rounded-[28px]">
         <WhenPanel when={flow.when} leadMinutes={selected?.advanceBookingMinutes ?? 0} onCancel={() => setWhenOpen(false)} onDone={when => { dispatch({ type: 'setWhen', when }); setWhenOpen(false) }} />
       </div>
     </div>}
 
-    {phase === 'home' && <Sheet key="home" label="Where to" onHeight={setSheet}>
+    {phase === 'home' && <Sheet key="home" label={t('home.whereToLabel')} onHeight={setSheet}>
       <div className="px-4 pb-2 pt-1">
         <div className="overflow-hidden rounded-[20px] bg-white shadow-[0_1px_0_rgba(16,35,31,0.04)] ring-1 ring-rule">
           <button type="button" onClick={() => dispatch({ type: 'openSearch', field: 'pickup' })} className="press flex min-h-14 w-full items-center gap-3 px-4 py-2 text-left outline-none focus-visible:bg-tide-soft">
             <PickupMark />
             <span className="min-w-0 flex-1">
-              <span className="block text-[12px] font-semibold text-ink-3">Pickup</span>
-              <span className="block truncate text-[15px] font-medium">{flow.pickup ? `${flow.pickupSource === 'gps' ? flow.pickup.label : flow.pickup.name}${flow.pickupSource === 'city' ? ' · set your exact spot' : ''}` : locating ? 'Finding your location…' : 'Choose pickup'}</span>
+              <span className="block text-[12px] font-semibold text-ink-3">{t('home.pickup')}</span>
+              <span className="block truncate text-[15px] font-medium">{flow.pickup ? `${flow.pickupSource === 'gps' ? flow.pickup.label : flow.pickup.name}${flow.pickupSource === 'city' ? t('home.setExact') : ''}` : locating ? t('home.finding') : t('home.choosePickup')}</span>
             </span>
             {locating && !flow.pickup ? <Spinner className="size-4 text-tide" /> : <Icon.chevronRight className="size-4 shrink-0 text-ink-3" />}
           </button>
           <span aria-hidden="true" className="ml-[21px] block h-0 border-t border-dashed border-rule" />
           <button type="button" onClick={() => dispatch({ type: 'openSearch', field: 'dropoff' })} className="press flex min-h-16 w-full items-center gap-3 px-4 text-left outline-none focus-visible:bg-tide-soft">
             <DropoffMark />
-            <span className="display min-w-0 flex-1 truncate text-[22px] font-bold">Where to?</span>
-            <span aria-hidden="true" className="grid size-9 shrink-0 place-items-center rounded-[12px] bg-tide text-white"><Icon.search className="size-[18px]" /></span>
+            <span className="display min-w-0 flex-1 truncate text-[22px] font-bold">{t('home.whereTo')}</span>
+            <span aria-hidden="true" className="grid size-9 shrink-0 place-items-center rounded-[12px] bg-ruta text-ink"><Icon.search className="size-[18px]" /></span>
           </button>
         </div>
         <WhenSwitch className="mt-3" when={flow.when} onNow={() => dispatch({ type: 'setWhen', when: null })} onSchedule={() => setWhenOpen(true)} />
@@ -297,20 +299,20 @@ export default function RiderApp({ initialRide, initialServiceId }: { initialRid
             </button>
           </li>)}
         </ul>}
-        {servicesError && <p role="alert" className="mt-2 text-[14px] text-alert">Rides are unavailable right now. Try again shortly.</p>}
+        {servicesError && <p role="alert" className="mt-2 text-[14px] text-alert">{t('home.unavailable')}</p>}
       </div>
     </Sheet>}
 
-    {phase === 'pin' && <Sheet key="pin" label="Set location on map" onHeight={setSheet}>
+    {phase === 'pin' && <Sheet key="pin" label={t('pin.sheet')} onHeight={setSheet}>
       <div className="px-4 pb-2 pt-2">
-        <h2 className="display text-[22px] font-bold">{pinField === 'pickup' ? 'Set your pickup spot' : 'Set your destination'}</h2>
-        <p className="mt-0.5 text-[14px] text-ink-2">Drag the map to move the pin</p>
+        <h2 className="display text-[22px] font-bold">{pinField === 'pickup' ? t('pin.pickup') : t('pin.destination')}</h2>
+        <p className="mt-0.5 text-[14px] text-ink-2">{t('pin.drag')}</p>
         <div className="mt-3 flex min-h-14 items-center gap-3 rounded-[16px] bg-white px-4 ring-1 ring-rule">
           {pinField === 'pickup' ? <PickupMark /> : <DropoffMark />}
-          <span className="min-w-0 flex-1 truncate text-[16px] font-medium">{pinBusy || !pinPlace ? 'Finding address…' : pinPlace.label}</span>
+          <span className="min-w-0 flex-1 truncate text-[16px] font-medium">{pinBusy || !pinPlace ? t('pin.finding') : pinPlace.label}</span>
           {pinBusy && <Spinner className="size-4" />}
         </div>
-        <Button size="lg" className="mt-3 w-full" disabled={!pinPlace || pinBusy} onClick={() => pinPlace && pinField && dispatch({ type: 'pick', field: pinField, place: pinPlace })}>{pinField === 'pickup' ? 'Confirm pickup' : 'Confirm destination'}</Button>
+        <Button size="lg" className="mt-3 w-full" disabled={!pinPlace || pinBusy} onClick={() => pinPlace && pinField && dispatch({ type: 'pick', field: pinField, place: pinPlace })}>{pinField === 'pickup' ? t('pin.confirmPickup') : t('pin.confirmDestination')}</Button>
       </div>
     </Sheet>}
 
@@ -329,13 +331,13 @@ export default function RiderApp({ initialRide, initialServiceId }: { initialRid
           return <li key={service.id} className="tile-in" style={{ animationDelay: `${index * 40}ms` }}>
             <button type="button" role="radio" aria-checked={active} disabled={!bookable || phase === 'requesting'} onClick={() => dispatch({ type: 'selectService', serviceId: service.id })}
               className={cx('press flex h-full min-h-[104px] w-full flex-col rounded-[20px] px-3 pb-2.5 pt-2.5 text-left outline-none focus-visible:ring-2 focus-visible:ring-tide focus-visible:ring-offset-2 focus-visible:ring-offset-paper',
-                active ? 'bg-tide text-white shadow-[0_8px_20px_-10px_rgba(15,92,85,0.8)]' : 'bg-white text-ink ring-1 ring-inset ring-rule hover:ring-[#cfc9ba]', !bookable && 'opacity-50')}>
+                active ? 'bg-ruta text-ink shadow-[0_8px_20px_-10px_rgba(71,64,74,0.45)]' : 'bg-white text-ink ring-1 ring-inset ring-rule hover:ring-[#d5d2d8]', !bookable && 'opacity-50')}>
               <span className="flex items-start justify-between gap-2">
                 <VehicleArt src={vehicleArt(service.category, { seats: service.passengerCapacity, wheelchair: service.wheelchairAccessible })} className="h-8 w-11" />
-                <span className={cx('display text-[18px] font-bold leading-6 tabular-nums', active ? 'text-white' : 'text-ink')}>{price != null && service.currencyCode ? formatMoney(price, service.currencyCode) : liveEstimates ? '—' : <span className={cx('inline-block h-4 w-12 animate-pulse rounded motion-reduce:animate-none', active ? 'bg-white/30' : 'bg-tide-soft')} />}</span>
+                <span className="display text-[18px] font-bold leading-6 tabular-nums text-ink">{price != null && service.currencyCode ? formatMoney(price, service.currencyCode) : liveEstimates ? '—' : <span className={cx('inline-block h-4 w-12 animate-pulse rounded motion-reduce:animate-none', active ? 'bg-ink/15' : 'bg-tide-soft')} />}</span>
               </span>
               <span className="mt-auto pt-1.5 text-[15px] font-semibold leading-5 [overflow-wrap:anywhere] line-clamp-2">{service.title}</span>
-              <span className={cx('mt-1 flex min-w-0 items-center gap-2 text-[12px] font-medium', active ? 'text-white/85' : 'text-ink-3')}>
+              <span className={cx('mt-1 flex min-w-0 items-center gap-2 text-[12px] font-medium', active ? 'text-ink/70' : 'text-ink-3')}>
                 <span className="inline-flex shrink-0 items-center gap-0.5"><Icon.person className="size-3.5" />{service.passengerCapacity}</span>
                 {service.wheelchairAccessible && <Icon.wheelchair className="size-3.5 shrink-0" />}
                 <span className="truncate">{bookable ? (at ? `Arrive ${at}` : service.description || '') : service.readiness?.reason || 'Not available now'}</span>

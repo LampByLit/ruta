@@ -1,6 +1,7 @@
 'use client'
 
 import { useEffect, useRef, useState } from 'react'
+import { useI18n } from '@/features/i18n/locale'
 import type { LngLat, Place } from '../lib/api'
 import { milesBetween, useRecentPlaces, searchPlaces } from '../lib/places'
 import type { Field } from '../domain/riderFlow'
@@ -51,6 +52,7 @@ export function PlanRide({ field, pickup, pickupIsGps, dropoff, near, when, onNo
     return () => { controller.abort(); window.clearTimeout(timer) }
   }, [query, near?.[0], near?.[1]]) // eslint-disable-line react-hooks/exhaustive-deps
 
+  const { t, locale } = useI18n()
   const recents = useRecentPlaces().filter(place => place.label !== pickup?.label && place.label !== dropoff?.label)
   const typing = query.trim().length >= 2
   const rows = typing ? results : recents
@@ -62,33 +64,33 @@ export function PlanRide({ field, pickup, pickupIsGps, dropoff, near, when, onNo
     return which === 'pickup' && pickupIsGps ? '' : place.label
   }
 
-  return <div className="fixed inset-0 z-40 flex flex-col bg-paper lg:inset-auto lg:left-6 lg:top-[84px] lg:max-h-[calc(100dvh-108px)] lg:w-[420px] lg:rounded-[28px] lg:shadow-[0_12px_40px_-12px_rgba(16,35,31,0.4)] fade-in" role="dialog" aria-modal="true" aria-label="Plan your ride">
+  return <div className="fixed inset-0 z-40 flex flex-col bg-paper lg:inset-auto lg:left-6 lg:top-[84px] lg:max-h-[calc(100dvh-108px)] lg:w-[420px] lg:rounded-[28px] lg:shadow-[0_12px_40px_-12px_rgba(16,35,31,0.4)] fade-in" role="dialog" aria-modal="true" aria-label={t('plan.title')}>
     <header className="grid grid-cols-[44px_1fr_44px] items-center px-2 pt-[max(env(safe-area-inset-top),10px)] lg:pt-3">
-      <button type="button" onClick={onBack} aria-label="Back" className="press grid size-11 place-items-center rounded-[14px] outline-none focus-visible:ring-2 focus-visible:ring-tide"><Icon.back className="size-6" /></button>
-      <h1 className="display text-center text-[19px] font-bold">Plan your ride</h1>
+      <button type="button" onClick={onBack} aria-label={t('nav.back')} className="press grid size-11 place-items-center rounded-[14px] outline-none focus-visible:ring-2 focus-visible:ring-tide"><Icon.back className="size-6" /></button>
+      <h1 className="display text-center text-[19px] font-bold">{t('plan.title')}</h1>
     </header>
     <div className="px-4 pt-2"><WhenSwitch when={when} onNow={onNow} onSchedule={onWhen} /></div>
     <div className="relative mt-3 px-4">
       <span aria-hidden="true" className="absolute bottom-[30px] left-[37px] top-[30px] w-0 border-l-2 border-dotted border-[#c9c4b6]" />
       {(['pickup', 'dropoff'] as const).map(which => <label key={which} className={cx('relative mt-2 flex h-14 items-center gap-3 rounded-[16px] bg-white pl-4 pr-2 ring-1 ring-rule first:mt-0', field === which && 'ring-2 ring-tide')}>
         {which === 'pickup' ? <PickupMark className="relative z-10" /> : <DropoffMark className="relative z-10" />}
-        <span className="sr-only">{which === 'pickup' ? 'Pickup' : 'Destination'}</span>
+        <span className="sr-only">{which === 'pickup' ? t('plan.pickup') : t('plan.destination')}</span>
         <input ref={inputs[which]} value={fieldValue(which)} onFocus={() => onField(which)} onChange={event => setText(current => ({ ...current, [which]: event.target.value }))}
-          placeholder={which === 'pickup' ? (pickupIsGps ? 'Current location' : pickup ? pickup.name : 'Pickup location') : 'Where to?'}
+          placeholder={which === 'pickup' ? (pickupIsGps ? t('plan.currentLocation') : pickup ? pickup.name : t('plan.pickupLocation')) : t('plan.whereTo')}
           className={cx('h-full min-w-0 flex-1 bg-transparent text-[16px] outline-none', which === 'pickup' && pickupIsGps && !text.pickup ? 'placeholder:text-ink' : 'placeholder:text-ink-3')}
           autoComplete="off" enterKeyHint="search" inputMode="search" />
-        {text[which] && <button type="button" aria-label="Clear" onClick={() => setText(current => ({ ...current, [which]: '' }))} className="press -mr-1 grid size-11 place-items-center rounded-[12px] text-ink-3"><Icon.close className="size-4" /></button>}
+        {text[which] && <button type="button" aria-label={t('nav.clear')} onClick={() => setText(current => ({ ...current, [which]: '' }))} className="press -mr-1 grid size-11 place-items-center rounded-[12px] text-ink-3"><Icon.close className="size-4" /></button>}
       </label>)}
     </div>
 
     <ul className="mt-2 min-h-0 flex-1 overflow-y-auto px-4 pb-6" aria-live="polite" aria-busy={loading}>
-      {field === 'pickup' && !typing && <Row icon={locating ? <Spinner className="size-4" /> : <Icon.locate className="size-[18px]" />} title="Use current location" onClick={onUseLocation} />}
-      {!typing && rows.length > 0 && <li className="pt-3 pb-1 text-[13px] font-semibold text-ink-3">Recent</li>}
+      {field === 'pickup' && !typing && <Row icon={locating ? <Spinner className="size-4" /> : <Icon.locate className="size-[18px]" />} title={t('plan.useLocation')} onClick={onUseLocation} />}
+      {!typing && rows.length > 0 && <li className="pt-3 pb-1 text-[13px] font-semibold text-ink-3">{t('plan.recent')}</li>}
       {rows.map(place => <Row key={place.label} icon={typing ? <Icon.pin className="size-[18px]" /> : <Icon.history className="size-[18px]" />} title={place.name}
-        detail={[place.detail, near && typing ? `${milesBetween(near, place.point).toFixed(1)} mi` : null].filter(Boolean).join(' · ')} onClick={() => pick(place)} />)}
-      {typing && !loading && !results.length && <li className="px-1 py-4 text-[15px] text-ink-2">{failed ? 'Search is unavailable. Try again, or set the location on the map.' : 'No matching places nearby.'}</li>}
-      {typing && loading && !results.length && <li className="flex items-center gap-3 px-1 py-4 text-[15px] text-ink-2"><Spinner className="size-4 text-tide" />Searching…</li>}
-      <Row icon={<Icon.target className="size-[18px]" />} title="Set location on map" onClick={() => onSetOnMap(field)} />
+        detail={[place.detail, near && typing ? `${(locale === 'es' ? milesBetween(near, place.point) * 1.60934 : milesBetween(near, place.point)).toFixed(1)} ${locale === 'es' ? 'km' : 'mi'}` : null].filter(Boolean).join(' · ')} onClick={() => pick(place)} />)}
+      {typing && !loading && !results.length && <li className="px-1 py-4 text-[15px] text-ink-2">{failed ? t('plan.searchFailed') : t('plan.noPlaces')}</li>}
+      {typing && loading && !results.length && <li className="flex items-center gap-3 px-1 py-4 text-[15px] text-ink-2"><Spinner className="size-4 text-tide" />{t('plan.searching')}</li>}
+      <Row icon={<Icon.target className="size-[18px]" />} title={t('plan.setOnMap')} onClick={() => onSetOnMap(field)} />
     </ul>
   </div>
 }

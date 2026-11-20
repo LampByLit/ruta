@@ -1,0 +1,222 @@
+import { GraphQLError } from 'graphql'
+import type { PrismaClient } from '@prisma/client'
+import { humanSessionId } from '../access'
+import { authorizedTripHeader, sameTripAuthority, tripAuthorityWhere } from '../domain/tripAuthority'
+import { executePaymentAdapter } from '../utils/paymentProviderAdapter'
+import { isDeepStrictEqual } from 'node:util'
+import { fenceHumanAuthority } from '../domain/authorityFence'
+import { commandBodyHash } from '../domain/commandBinding'
+import { currencyDigits, validMinor } from '../../lib/currency'
+import { randomUUID } from 'node:crypto'
+import { requireFleetOperations } from '../domain/operationalReadiness'
+import { requestBaseUrl } from './onboarding'
+import { assertTransition, COLLECTABLE_FARE_TRIP_STATUSES } from '../domain/lifecycles'
+
+function requireIdempotencyKey(value: unknown) {
+  const key = String(value || '').trim()
+  if (key.length < 12 || key.length > 200) throw new GraphQLError('A stable idempotency key of 12–200 characters is required.')
+  return key
+}
+
+async function appendObservation(prisma: any, paymentId: string, observation: Record<string, unknown>) {
+  return prisma.$transaction(async (tx: any) => {
+    await tx.$queryRaw`SELECT pg_advisory_xact_lock(hashtextextended(${`payment:${paymentId}`}, 0))::text IS NOT NULL`
+    const payment = await tx.payment.findUnique({ where: { id: paymentId } })
+    if (!payment) throw new GraphQLError('Original payment evidence is unavailable.')
+    // The attempt correlation remains stable, but each actual observation has
+    // its own identity. UNKNOWN must never overwrite a later observed result.
+    return tx.paymentObservation.create({ data: { paymentId, refundId: observation.refundId || null, observationKey: randomUUID(), details: observation } })
+  }, { isolationLevel: 'Serializable' })
+}
+
+export function moneySnapshot(value: any) {
+  const quote = value?.quote && typeof value.quote === 'object' ? value.quote : {}
+  const fare = quote.fare && typeof quote.fare === 'object' ? quote.fare : {}
+  const amount = quote.totalMinor ?? fare.totalMinor
+  const currency = quote.currencyCode ?? fare.currencyCode
+  if (typeof currency !== 'string') throw new GraphQLError('Trip currency evidence is unavailable.')
+  currencyDigits(currency)
+  if (!validMinor(amount) || amount <= 0) throw new GraphQLError('Trip does not have a payable fare snapshot.')
+  return { amount, currency }
+}
+
+export async function initiateTripPayment(_root: unknown, args: { tripId: string; providerCode: string; idempotencyKey: string }, context: any) {
+  if (!humanSessionId(context.session)) throw new GraphQLError('Authentication is required.')
+  const idempotencyKey = requireIdempotencyKey(args.idempotencyKey)
+  const prisma = context.prisma as PrismaClient
+  const preflight = await prisma.$transaction(async tx => {
+    const authority = await authorizedTripHeader(tx, context.session, args.tripId, 'riderOrOperator', 'finance')
+    if (!authority?.bound) throw new GraphQLError('Trip not found.')
+    const trip = await tx.trip.findFirst({ where: tripAuthorityWhere(authority.header), select: { id: true, status: true, confirmationCode: true, rider: { select: { id: true, email: true } }, fleet: { select: { id: true } }, bookingSnapshot: true } })
+    if (!trip) throw new GraphQLError('Trip not found.')
+    return { trip, header: authority.header }
+  }, { isolationLevel: 'RepeatableRead' })
+  const trip = preflight.trip
+  await requireFleetOperations(prisma, trip.fleet?.id)
+  const sudo = context.sudo()
+  if (!(COLLECTABLE_FARE_TRIP_STATUSES as readonly string[]).includes(trip.status || '')) throw new GraphQLError('Trip is not in a payable state.')
+  const { amount, currency } = moneySnapshot(trip.bookingSnapshot)
+  const provider = await sudo.query.PaymentProvider.findOne({ where: { code: args.providerCode }, query: 'id code isInstalled createPaymentFunction capturePaymentFunction refundPaymentFunction getPaymentStatusFunction handleWebhookFunction' })
+  if (!provider || provider.isInstalled !== 'yes') throw new GraphQLError('Payment provider is unavailable.')
+
+  const reservation = await prisma.$transaction(async tx => {
+    const lockKey = `payment-init:${trip.id}`
+    await tx.$queryRaw`SELECT pg_advisory_xact_lock(hashtextextended(${lockKey}, 0))::text IS NOT NULL`
+    await fenceHumanAuthority(tx, context.session, preflight.header.fleetId)
+    const authority = await authorizedTripHeader(tx, context.session, trip.id, 'riderOrOperator', 'finance')
+    if (!authority?.bound || !sameTripAuthority(authority.header, preflight.header)) throw new GraphQLError('Trip payment authority or assignment changed; reconciliation is required.')
+    const currentTrip = await tx.trip.findFirst({ where: tripAuthorityWhere(authority.header), select: { status: true, bookingSnapshot: true } })
+    if (!currentTrip || !(COLLECTABLE_FARE_TRIP_STATUSES as readonly string[]).includes(currentTrip.status || '')) throw new GraphQLError('Trip is not in a payable state.')
+    const currentMoney = moneySnapshot(currentTrip.bookingSnapshot)
+    if (currentMoney.amount !== amount || currentMoney.currency !== currency) throw new GraphQLError('Accepted payment economics changed; reconciliation is required.')
+    const replay = await tx.payment.findUnique({ where: { idempotencyKey } })
+    const command = { version: 1, purpose: 'payment_initiation', actorId: context.session.itemId, assignment: authority.header, body: { tripId: args.tripId, providerCode: args.providerCode, amountMinor: amount, currencyCode: currency } }
+    if (replay) {
+      const evidence = replay.providerEvidence as Record<string, unknown> | null
+      if (replay.tripId !== trip.id || replay.providerId !== provider.id || replay.amountMinor !== amount || replay.currencyCode !== currency || !isDeepStrictEqual(evidence?.command, command)) throw new GraphQLError('Idempotency key belongs to a different payment intent or original binding is unavailable.')
+      return { payment: replay, shouldExecute: false }
+    }
+    const active = await tx.payment.findFirst({ where: { tripId: trip.id, purpose: 'fare', status: { in: ['pending', 'authorized', 'captured', 'partially_refunded'] } } })
+    if (active) throw new GraphQLError('A payment attempt already exists for this trip. Reconciliation is required before another attempt.')
+    const payment = await tx.payment.create({ data: {
+      tripId: trip.id, providerId: provider.id, amountMinor: amount, currencyCode: currency, status: 'pending',
+      idempotencyKey, providerEvidence: { command, providerSnapshot: { ...provider }, phase: 'intent_recorded', adapter: provider.createPaymentFunction, disclosure: 'No money movement has been verified.' },
+    } })
+    return { payment, shouldExecute: true }
+  }, { isolationLevel: 'Serializable' })
+  if (!reservation.shouldExecute) return reservation.payment
+
+  let evidence: any
+  try {
+    evidence = await executePaymentAdapter({ provider, functionName: 'createPaymentFunction', args: { trip, amount, currency, idempotencyKey, origin: requestBaseUrl(context.req) } })
+  } catch {
+    await appendObservation(prisma, reservation.payment.id, { observationId: `${reservation.payment.id}:create`, providerId: provider.id, amountMinor: amount, currencyCode: currency, phase: 'outcome_indeterminate', observedAt: new Date().toISOString() })
+    throw new GraphQLError('Payment outcome is indeterminate. The durable intent was retained for reconciliation; do not submit a new key.')
+  }
+  await appendObservation(prisma, reservation.payment.id, { observationId: `${reservation.payment.id}:create`, providerId: provider.id, amountMinor: amount, currencyCode: currency, phase: 'pending', externalId: String(evidence.externalId || '').slice(0, 200), observedAt: new Date().toISOString() })
+  return prisma.payment.update({ where: { id: reservation.payment.id }, data: {
+    status: 'pending',
+    providerReference: String(evidence.externalId || ''),
+  } })
+}
+
+export async function requestTripRefund(_root: unknown, args: { paymentId: string; amountMinor: number; reason?: string | null; idempotencyKey: string }, context: any) {
+  if (!humanSessionId(context.session)) throw new GraphQLError('Authentication is required.')
+  const idempotencyKey = requireIdempotencyKey(args.idempotencyKey)
+  const amount = Number(args.amountMinor)
+  if (!validMinor(amount) || amount <= 0) throw new GraphQLError('Refund amount must be a positive integer in minor currency units.')
+  const reason = args.reason ?? ''
+  if (typeof reason !== 'string' || reason.length > 500) throw new GraphQLError('Refund reason is invalid.')
+  const prisma = context.prisma as PrismaClient
+  const preflight = await prisma.$transaction(async tx => {
+    const paymentHeader = await tx.payment.findUnique({ where: { id: args.paymentId }, select: { id: true, tripId: true } })
+    const authority = paymentHeader?.tripId ? await authorizedTripHeader(tx, context.session, paymentHeader.tripId, 'operator', 'finance') : null
+    if (!authority?.bound) throw new GraphQLError('Payment is not refundable.')
+    const payment = await tx.payment.findFirst({ where: { id: args.paymentId, tripId: authority.header.id }, select: { id: true, amountMinor: true, currencyCode: true, status: true, providerReference: true, providerEvidence: true, provider: { select: { id: true, code: true, isInstalled: true, refundPaymentFunction: true } } } })
+    if (!payment) throw new GraphQLError('Payment is not refundable.')
+    return { payment, header: authority.header }
+  }, { isolationLevel: 'RepeatableRead' })
+  await requireFleetOperations(prisma, preflight.header.fleetId)
+  const payment = preflight.payment
+  if (!['captured', 'partially_refunded'].includes(payment.status || '')) throw new GraphQLError('Payment is not refundable.')
+  const provider = payment.provider
+  if (!provider || provider.isInstalled !== 'yes' || payment.amountMinor == null || payment.amountMinor <= 0 || !/^[A-Z]{3}$/.test(payment.currencyCode || '')) throw new GraphQLError('Payment evidence is incomplete and requires manual review.')
+
+  const reservation = await prisma.$transaction(async tx => {
+    const lockKey = `payment:${payment.id}`
+    await tx.$queryRaw`SELECT pg_advisory_xact_lock(hashtextextended(${lockKey}, 0))::text IS NOT NULL`
+    await fenceHumanAuthority(tx, context.session, preflight.header.fleetId)
+    const authority = await authorizedTripHeader(tx, context.session, preflight.header.id, 'operator', 'finance')
+    if (!authority?.bound || !sameTripAuthority(authority.header, preflight.header)) throw new GraphQLError('Refund authority or assignment changed; reconciliation is required.')
+    const paymentHeader = await tx.payment.findUnique({ where: { id: payment.id }, select: { id: true, tripId: true, providerId: true } })
+    if (paymentHeader?.tripId !== authority.header.id || paymentHeader.providerId !== payment.provider?.id) throw new GraphQLError('Refund payment binding changed; reconciliation is required.')
+    const replay = await tx.refund.findUnique({ where: { idempotencyKey } })
+    const commandBinding = { version: 1, purpose: 'payment_refund', actorId: context.session.itemId, assignment: authority.header, bodyHash: commandBodyHash({ paymentId: args.paymentId, amountMinor: amount, reason }) }
+    const priorCommand = await tx.tripEvent.findUnique({ where: { idempotencyKey } })
+    if (replay) {
+      if (replay.paymentId !== payment.id || replay.amountMinor !== amount || !isDeepStrictEqual((priorCommand?.metadata as any)?.commandBinding, commandBinding)) throw new GraphQLError('Idempotency key belongs to a different refund command or original binding is unavailable.')
+      return { refund: replay, shouldExecute: false }
+    }
+    const currentPayment = await tx.payment.findUnique({ where: { id: payment.id } })
+    if (!currentPayment || !['captured', 'partially_refunded'].includes(currentPayment.status || '')) throw new GraphQLError('Payment is no longer refundable.')
+    const reservedRefunds = await tx.refund.aggregate({ where: { paymentId: payment.id, status: { in: ['requested', 'processing', 'succeeded'] } }, _sum: { amountMinor: true } })
+    const alreadyReserved = reservedRefunds._sum.amountMinor || 0
+    if (currentPayment.amountMinor == null || amount > currentPayment.amountMinor - alreadyReserved) throw new GraphQLError('Refund amount exceeds the available balance after pending reservations.')
+    const refund = await tx.refund.create({ data: {
+      paymentId: payment.id, providerId: provider.id, amountMinor: amount, currencyCode: payment.currencyCode,
+      reason, status: 'processing', idempotencyKey,
+    } })
+    await tx.tripEvent.create({ data: { tripId: authority.header.id, eventType: 'finance.refund_reserved', actorType: 'operator', actorUserId: context.session.itemId, idempotencyKey, occurredAt: new Date(), metadata: { commandBinding, refundId: refund.id, providerId: provider.id } } })
+    return { refund, shouldExecute: true }
+  }, { isolationLevel: 'Serializable' })
+  if (!reservation.shouldExecute) return reservation.refund
+
+  let evidence: any
+  try {
+    evidence = await executePaymentAdapter({ provider, functionName: 'refundPaymentFunction', args: { paymentId: payment.providerReference, amount, currency: payment.currencyCode, idempotencyKey } })
+  } catch {
+    await appendObservation(prisma, payment.id, { observationId: `${reservation.refund.id}:result`, refundId: reservation.refund.id, providerId: provider.id, amountMinor: amount, currencyCode: payment.currencyCode, phase: 'outcome_indeterminate', observedAt: new Date().toISOString() })
+    throw new GraphQLError('Refund outcome is indeterminate. Its balance remains reserved pending reconciliation; do not submit a new key.')
+  }
+  const status = evidence.status === 'succeeded' ? 'succeeded' : 'processing'
+  await appendObservation(prisma, payment.id, { observationId: `${reservation.refund.id}:result`, refundId: reservation.refund.id, providerId: provider.id, amountMinor: amount, currencyCode: payment.currencyCode, phase: status, externalId: String(evidence.externalId || '').slice(0, 200), observedAt: new Date().toISOString() })
+  return prisma.$transaction(async tx => {
+  await tx.$queryRaw`SELECT pg_advisory_xact_lock(hashtextextended(${`payment:${payment.id}`}, 0))::text IS NOT NULL`
+  const original = await tx.refund.findUnique({ where: { id: reservation.refund.id } })
+  if (!original || original.paymentId !== payment.id || original.providerId !== provider.id || original.idempotencyKey !== idempotencyKey) throw new GraphQLError('Original refund binding is unavailable.')
+  if (original.status === 'succeeded') return original
+  if (original.status !== status) assertTransition('refund', original.status, status, 'refund')
+  const refund = await tx.refund.update({ where: { id: original.id }, data: {
+    status, providerReference: String(evidence.externalId || ''),
+    processedAt: status === 'succeeded' ? new Date() : null,
+  } })
+  if (status === 'succeeded') {
+    const current = await tx.payment.findUnique({ where: { id: payment.id } })
+    const totalSucceeded = await tx.refund.aggregate({ where: { paymentId: payment.id, status: 'succeeded' }, _sum: { amountMinor: true } })
+    if (!current || current.amountMinor == null || (totalSucceeded._sum.amountMinor || 0) > current.amountMinor) throw new GraphQLError('Refund evidence exceeds original tender; reconciliation is required.')
+    const nextStatus = (totalSucceeded._sum.amountMinor || 0) === current.amountMinor ? 'refunded' : 'partially_refunded'
+    assertTransition('payment', current.status, nextStatus, 'payment')
+    await tx.payment.update({ where: { id: payment.id }, data: { status: nextStatus } })
+    await bookRefundLedger(tx, refund, current, 'refund_call')
+  }
+  return refund
+  }, { isolationLevel: 'Serializable' })
+}
+
+/** The ledger side of a settled refund. Keyed by refund, so a replay (webhook + refund call + operator) books it once. */
+export async function bookRefundLedger(tx: any, refund: { id: string; amountMinor: number | null; currencyCode: string | null }, payment: { id: string; tripId: string | null }, source: string) {
+  if (refund.amountMinor == null || refund.amountMinor <= 0) return
+  const entryKey = `refund:${refund.id}:succeeded`
+  if (await tx.ledgerEntry.findUnique({ where: { entryKey }, select: { id: true } })) return
+  await tx.ledgerEntry.create({ data: { tripId: payment.tripId, paymentId: payment.id, entryKey, kind: 'refund', account: 'rider_receivable', direction: 'debit', amountMinor: refund.amountMinor, currencyCode: refund.currencyCode, memo: 'Refunded to card', metadata: { source } } })
+}
+
+/** Settles a refund from what the provider says: the refund call's answer, a webhook, or a later look-up.
+ * Replays and stale events are harmless: a settled refund never moves, and a payment never leaves refunded. */
+export async function settleRefund(prisma: any, args: { refundId: string; status: 'succeeded' | 'failed' | 'cancelled'; externalId?: string; source: string }) {
+  return prisma.$transaction(async (tx: any) => {
+    const header = await tx.refund.findUnique({ where: { id: args.refundId }, select: { paymentId: true } })
+    if (!header?.paymentId) return { settled: false, reason: 'unknown_refund' as const }
+    await tx.$queryRaw`SELECT pg_advisory_xact_lock(hashtextextended(${`payment:${header.paymentId}`}, 0))::text IS NOT NULL`
+    const refund = await tx.refund.findUnique({ where: { id: args.refundId } })
+    if (!refund) return { settled: false, reason: 'unknown_refund' as const }
+    if (refund.status === args.status) return { settled: false, reason: 'already_settled' as const }
+    if (!['requested', 'processing'].includes(refund.status || '')) return { settled: false, reason: 'already_settled' as const }
+    assertTransition('refund', refund.status, args.status, 'refund')
+    await tx.refund.update({ where: { id: refund.id }, data: { status: args.status, ...(args.externalId ? { providerReference: args.externalId } : {}), processedAt: args.status === 'succeeded' ? new Date() : null } })
+    await tx.paymentObservation.create({ data: { paymentId: header.paymentId, refundId: refund.id, observationKey: randomUUID(), details: { phase: args.status, source: args.source, externalId: args.externalId || refund.providerReference || null, observedAt: new Date().toISOString() } } })
+    if (args.status === 'succeeded') {
+      const payment = await tx.payment.findUnique({ where: { id: header.paymentId } })
+      const total = await tx.refund.aggregate({ where: { paymentId: header.paymentId, status: 'succeeded' }, _sum: { amountMinor: true } })
+      const refunded = total._sum.amountMinor || 0
+      if (!payment || payment.amountMinor == null || refunded > payment.amountMinor) throw new GraphQLError('Refund evidence exceeds original tender; reconciliation is required.')
+      const next = refunded === payment.amountMinor ? 'refunded' : 'partially_refunded'
+      if (payment.status !== next) {
+        assertTransition('payment', payment.status, next, 'payment')
+        await tx.payment.update({ where: { id: payment.id }, data: { status: next } })
+      }
+      await bookRefundLedger(tx, refund, payment, args.source)
+    }
+    return { settled: true as const, status: args.status }
+  }, { isolationLevel: 'Serializable' })
+}

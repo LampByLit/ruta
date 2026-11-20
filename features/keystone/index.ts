@@ -1,0 +1,49 @@
+import { s3ForcePathStyle } from "./lib/s3-storage";
+import { createAuth } from '@keystone-6/auth'
+import { config } from '@keystone-6/core'
+import { statelessSessions } from '@keystone-6/core/session'
+import 'dotenv/config'
+import { models } from './models'
+import { withCreateAwareUi, withDeleteAwareUi, withItemViewAwareUi } from './ui-create-access'
+import { extendGraphqlSchema } from './mutations'
+import { sendPasswordResetEmail } from './lib/mail'
+import { permissionNames, permissions } from './access'
+import { pooledDatabaseUrl } from './database-url';
+// Keystone returns failed queries as values; this makes them throw so transactions roll back.
+import { throwKeystonePrismaErrors } from './lib/keystonePrismaErrors'
+
+const production = process.env.NODE_ENV === 'production'
+const databaseURL = process.env.DATABASE_URL || 'postgresql://localhost/openfront_rideshare'
+const sessionSecret = process.env.SESSION_SECRET || 'development-only-session-secret-change-me-now'
+if (production && (!process.env.DATABASE_URL || !process.env.SESSION_SECRET || sessionSecret.length < 32)) throw new Error('DATABASE_URL and SESSION_SECRET of at least 32 characters are required in production.')
+
+const session = statelessSessions({ maxAge: 60 * 60 * 24 * 30, secret: sessionSecret })
+const { withAuth } = createAuth({
+  listKey: 'User', identityField: 'email', secretField: 'password',
+  // The first user's Admin role is assigned by the User resolveInput hook (see models/User.ts).
+  initFirstItem: { fields: ['name', 'email', 'password'] },
+  passwordResetLink: { async sendToken(args) { await sendPasswordResetEmail(args.token, args.identity) } },
+  sessionData: `id name email role { id name ${permissionNames.join(' ')} }`,
+})
+
+// As in E-commerce and Coffee: placeholder storage only outside production.
+function productionEnv(name: string, developmentFallback: string): string {
+  if (process.env[name]) return process.env[name]!
+  if (process.env.NODE_ENV === 'production') throw new Error(`${name} is required in production`)
+  return developmentFallback
+}
+
+const s3Endpoint = productionEnv('S3_ENDPOINT', 'https://sfo3.digitaloceanspaces.com')
+const storage = {
+  my_images: {
+    kind: 's3' as const, type: 'image' as const, bucketName: productionEnv('S3_BUCKET_NAME', 'keystone-test'),
+    region: productionEnv('S3_REGION', 'ap-southeast-2'), accessKeyId: productionEnv('S3_ACCESS_KEY_ID', 'keystone'), secretAccessKey: productionEnv('S3_SECRET_ACCESS_KEY', 'keystone'),
+    endpoint: s3Endpoint, forcePathStyle: s3ForcePathStyle(s3Endpoint), signed: { expiry: 5000 },
+  },
+}
+
+export default withAuth(config({
+  db: { provider: 'postgresql', url: pooledDatabaseUrl(databaseURL), extendPrismaClient: throwKeystonePrismaErrors }, lists: withItemViewAwareUi(withDeleteAwareUi(withCreateAwareUi(models))), session,
+  graphql: { extendGraphqlSchema }, storage,
+  ui: { isAccessAllowed: context => permissions.canAccessDashboard({ context, session: context.session }) },
+}))

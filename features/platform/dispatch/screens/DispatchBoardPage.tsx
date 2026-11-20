@@ -1,0 +1,128 @@
+import { CommandRecovery } from '@/features/platform/components/CommandRecovery'
+import { parseQueueSearch, queueSearchHref } from '@/features/platform/components/queueSearch'
+import { Clock, Users } from 'lucide-react'
+import { QueueIssues, QueuePagination } from '@/features/platform/components/QueuePagination'
+import { StatusTitle } from '@/features/platform/components/StatusTitle'
+import { RouteLine } from '@/features/platform/components/RouteLine'
+import { statusLabel, statusTone, formatWhen } from '@/features/platform/lib/statusTone'
+import { keystoneClient } from '@/features/dashboard/lib/keystoneClient'
+import { RefreshClocksButton } from '@/features/platform/components/RefreshClocksButton'
+import { OperationsBoard } from '@/features/platform/components/OperationsBoard'
+import { operationsEnabled } from '@/features/keystone/domain/operationalReadiness'
+import { DispatchOfferControl } from '../components/DispatchOfferControl'
+import { NewRideSheet } from '../components/NewRideSheet'
+import { dispatchBoardQuery } from '../domain/dispatchBoardQuery'
+import {
+  DISPATCH_MAX_PAGE,
+  DISPATCH_PAGE_SIZE,
+  dispatchPageHref,
+  dispatchRequestWhere,
+  parseDispatchBoardParams,
+  reconcileDispatchPage,
+} from '../domain/pagination'
+
+type DispatchSearchParams = { q?: string | string[]; status?: string | string[]; page?: string | string[] }
+
+export async function DispatchBoardPage({ searchParams }: { searchParams?: Promise<DispatchSearchParams> } = {}) {
+  const rawParams = searchParams ? await searchParams : {}
+  const search = parseQueueSearch(rawParams.q)
+  const query = search.query
+  const selection = parseDispatchBoardParams(rawParams)
+  if (search.issue) selection.issues.push(search.issue)
+  const response = await keystoneClient(dispatchBoardQuery, {
+    where: { AND: [dispatchRequestWhere(selection.status), ...(query ? [{ requestNumber: { contains: query, mode: 'insensitive' } }] : [])] },
+    take: DISPATCH_PAGE_SIZE,
+    skip: selection.skip,
+  })
+
+  const data = response.success ? response.data : undefined
+  const items = Array.isArray(data?.rideRequests) ? data.rideRequests : []
+  const total = data?.rideRequestsCount
+  const hasScope = response.success && data?.dispatchQueueScope === true
+  const loaded = response.success
+    && hasScope
+    && Array.isArray(data?.rideRequests)
+    && Number.isSafeInteger(total)
+    && total >= 0
+  const pageState = loaded ? reconcileDispatchPage(selection.page, total, items.length) : undefined
+  const accessDenied = response.success
+    ? !hasScope
+    : /Access denied:/i.test(response.error)
+  const loadError = !loaded
+    ? accessDenied
+      ? 'Access to dispatch requests, scoped count, or candidate records was denied.'
+      : response.success
+        ? 'The dispatch source returned an incomplete page or scoped count.'
+        : 'Dispatch requests, scoped count, or candidate records could not be loaded.'
+    : undefined
+  const pageError = pageState?.staleReason === 'page_out_of_range'
+    ? 'This dispatch page no longer exists for the current scoped queue.'
+    : pageState?.staleReason === 'count_mismatch'
+      ? 'The dispatch page changed while loading; reload before taking action.'
+      : undefined
+  const boardError = loadError || pageError
+  const actionsEnabled = loaded && !pageState?.staleReason && selection.issues.length === 0
+
+  const actorId = data?.authenticatedItem?.id || ''
+  // Driver supply beside the demand queue. A role without driver access simply sees no rail.
+  const supplyResponse = await keystoneClient(`query DispatchSupply { driverProfiles(orderBy: { publicName: asc }, take: 100) { id publicName dispatchStatus } }`)
+  const drivers: Array<{ id: string; publicName: string; dispatchStatus: string }> = supplyResponse.success && Array.isArray(supplyResponse.data?.driverProfiles) ? supplyResponse.data.driverProfiles : []
+  const supply = (['available', 'offered', 'assigned', 'on_trip', 'offline'] as const).map(state => ({ state, count: drivers.filter(driver => driver.dispatchStatus === state).length }))
+  const available = drivers.filter(driver => driver.dispatchStatus === 'available')
+  const createdTimes: string[] = (items as Array<{ createdAt?: string | null }>).map(item => item.createdAt ?? '').filter(Boolean)
+  const oldest = createdTimes.length ? createdTimes.reduce((first, value) => (value < first ? value : first)) : null
+  // Services this dispatcher can book phone rides on (operator-scoped read of active services).
+  const servicesResponse = await keystoneClient(`query PhoneBookingServices { rideServices(where: { status: { equals: "active" }, fleet: { status: { equals: "active" } } }, orderBy: { name: asc }, take: 50) { id name passengerCapacity wheelchairAccessible fleet { name } } }`)
+  const phoneServices = servicesResponse.success && Array.isArray(servicesResponse.data?.rideServices) ? servicesResponse.data.rideServices.map((service: any) => ({ id: service.id, name: service.name, fleetName: service.fleet?.name || '', passengerCapacity: service.passengerCapacity || 4, wheelchairAccessible: service.wheelchairAccessible === true })) : []
+  return <OperationsBoard
+    title="Dispatch"
+    actions={loaded ? <><RefreshClocksButton /><NewRideSheet services={phoneServices} /></> : undefined}
+    meta={loaded ? <span className="tabular-nums">{total} {['cancelled', 'expired'].includes(selection.status) ? selection.status : 'waiting'}</span> : null}
+    searchLabel="Request number"
+    items={items}
+    selectedStatus={selection.status}
+    queryParams={{ q: query, page: String(selection.page) }}
+    error={boardError}
+    columns={[{ key: 'all', label: 'Open' }, { key: 'requested', label: 'Requested' }, { key: 'matching', label: 'Matching' }, { key: 'cancelled', label: 'Cancelled' }, { key: 'expired', label: 'Expired' }]}
+    empty="No rides waiting for a driver"
+    before={<>
+      {supplyResponse.success ? (
+        <section aria-label="Driver supply" className="grid gap-x-6 gap-y-3 border-y border-border py-3 md:grid-cols-[auto_minmax(0,1fr)] md:items-center">
+          <dl className="grid grid-cols-3 gap-x-5 gap-y-2 sm:grid-cols-6">
+            <div><dt className="text-xs text-muted-foreground">Waiting</dt><dd className="rf-figures text-xl font-semibold">{loaded ? total : '—'}</dd></div>
+            <div><dt className="text-xs text-muted-foreground">Oldest</dt><dd className="rf-figures text-xl font-semibold">{oldest ? waitedFor(oldest) : '—'}</dd></div>
+            {supply.slice(0, 4).map(entry => <div key={entry.state}><dt className="text-xs text-muted-foreground">{statusLabel(entry.state)}</dt><dd className={`rf-figures text-xl font-semibold ${entry.count ? '' : 'text-muted-foreground/60'}`}>{entry.count}</dd></div>)}
+          </dl>
+          <p className="min-w-0 text-sm text-muted-foreground md:text-right">
+            {available.length ? <>Available now: <span className="font-medium text-foreground">{available.slice(0, 6).map(driver => driver.publicName).join(', ')}{available.length > 6 ? ` +${available.length - 6}` : ''}</span></> : 'No driver is available right now'}
+          </p>
+        </section>
+      ) : null}
+      <QueueIssues issues={selection.issues} href={queueSearchHref(dispatchPageHref(selection.page, selection.status), query)} />
+      <CommandRecovery actorId={actorId} />
+    </>}
+    after={loaded && pageState ? <QueuePagination label="Dispatch pagination" noun={selection.status === 'all' ? 'open requests' : `${selection.status} requests`} page={selection.page} total={total} pageCount={pageState.pageCount} maxPage={DISPATCH_MAX_PAGE} firstItem={pageState.firstItem} lastItem={pageState.lastItem} staleReason={pageState.staleReason} exceedsPageLimit={pageState.exceedsPageLimit} hrefFor={page => queueSearchHref(dispatchPageHref(page, selection.status), query)} /> : null}
+    render={item => <div className="grid gap-3 md:grid-cols-[minmax(0,1fr)_minmax(0,22rem)] md:gap-6">
+      <div className="min-w-0 space-y-2">
+        <StatusTitle tone={statusTone(item.status)} status={statusLabel(item.status)} pulse={item.status === 'matching'} className="font-mono text-sm font-semibold">{item.requestNumber}</StatusTitle>
+        <RouteLine pickup={item.pickupLabel} dropoff={item.dropoffLabel} />
+        <p className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground">
+          <span className="inline-flex items-center gap-1"><Users className="size-3.5" aria-hidden="true" />{item.passengerCount || 1}</span>
+          <span className="inline-flex items-center gap-1"><Clock className="size-3.5" aria-hidden="true" />{item.requestedFor ? formatWhen(item.requestedFor) : 'Now'}</span>
+          {item.createdAt ? <span className="rf-figures">waiting {waitedFor(item.createdAt)}</span> : null}
+          <span className="tabular-nums">{item.matchOffers.length}{item.matchOffers.length === 50 ? '+' : ''} live offers</span>
+        </p>
+      </div>
+      <DispatchOfferControl request={item} actorId={actorId} actionsEnabled={actionsEnabled && operationsEnabled(item.fleet?.operationsMode)} operationsOff={!operationsEnabled(item.fleet?.operationsMode)} />
+    </div>}
+  />
+}
+
+/** Minutes (or hours) since a request was made, read at render time. */
+function waitedFor(iso: string) {
+  const minutes = Math.max(0, Math.round((Date.now() - new Date(iso).getTime()) / 60000))
+  if (!Number.isFinite(minutes)) return '—'
+  return minutes < 60 ? `${minutes}m` : `${Math.floor(minutes / 60)}h ${minutes % 60}m`
+}
+
+export default DispatchBoardPage
